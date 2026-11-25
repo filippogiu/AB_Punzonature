@@ -208,7 +208,7 @@ function vPunzona(){
    <div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
    ${o.nota?`<div class="msg info">${esc(o.nota)}</div>`:''}
    ${conf.length?`<div class="msg err">Attenzione: la colata ${esc(o.colata)} risulta anche su altre leghe (${conf.map(esc).join(', ')}). Avvisa il responsabile prima di punzonare.</div>`:''}
-   ${prev.length?`<div class="msg warn">Questo ODP è già stato punzonato ${prev.length} ${prev.length>1?'volte':'volta'}, l'ultima il ${esc(fmtT(prev[0].tsMs))} da ${esc(nm(prev[0].uid))}.
+   ${prev.length?`<div class="msg warn">Questo ODP è già stato punzonato ${prev.length} ${prev.length>1?'volte':'volta'}, l'ultima il ${esc(fmtT(prev[0].tsMs))} da ${esc(chi(prev[0]))}.
      <label class="check"><input type="checkbox" id="chkAgain" ${S.chkAgain?'checked':''}> Confermo che serve una nuova punzonatura (es. barre aggiuntive)</label></div>`:''}
    <div class="row" style="margin-top:12px"><button class="ghost" id="chg">Cambia ordine</button></div></div>`;
   const colOk=S.colataLetta&&norm(S.colataLetta)===o.colata, colKo=S.colataLetta&&norm(S.colataLetta).length>=o.colata.length&&!colOk;
@@ -364,7 +364,7 @@ function vVerifica(){
     const o=V.sel,prev=V.prev.filter(p=>!p.annullato),es=esitiVerifica(o),filled=es[0][3]!=null&&es[1][3]!=null,ok=filled&&es[0][3]===true&&es[1][3]===true,avvL=es[2][3]==='avviso';
     h+=`<div class="card"><div class="step"><div class="num done">1</div><h2>Ordine ${esc(o.odp)}</h2></div>
      <div class="grid"><div class="kv"><span>Lega</span><b>${esc(o.lega)}</b></div><div class="kv"><span>Colata</span><b>${esc(o.colata)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div><div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pressa</span><b>${esc(o.pressa||'—')}</b></div><div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
-     ${prev.length?`<h3 style="margin-top:16px">Punzonature registrate</h3><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>Colata letta</th><th>Etichetta</th></tr></thead><tbody>${prev.map(p=>`<tr><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(nm(p.uid))}</td><td>${esc(p.colataLetta)}</td><td>${p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'✓ corrisponde':'con differenze'):'non letta'}</td></tr>`).join('')}</tbody></table>`
+     ${prev.length?`<h3 style="margin-top:16px">Punzonature registrate</h3><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>Colata letta</th><th>Etichetta</th></tr></thead><tbody>${prev.map(p=>`<tr><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td>${esc(p.colataLetta)}</td><td>${p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'✓ corrisponde':'con differenze'):'non letta'}</td></tr>`).join('')}</tbody></table>`
        :'<div class="msg warn">Nessuna punzonatura registrata per questo ODP.</div>'}
      <div class="row" style="margin-top:12px"><button class="ghost" id="vchg">Cambia ordine</button></div></div>
     <div class="card"><div class="step"><div class="num ${filled?'done':''}">2</div><h2>Valori rilevati</h2></div>
@@ -381,7 +381,7 @@ function vVerifica(){
      ${S.role!=='lettore'?`<div class="row" style="margin-top:14px"><button class="red" id="vsave" ${!filled||V.saving?'disabled':''}>${V.saving?'Salvataggio…':'Salva controllo'}</button><button class="ghost" id="vnew">Nuovo controllo</button></div>`:'<p class="mute">Con il tuo accesso in sola lettura il controllo si vede a schermo ma non viene salvato.</p><div class="row" style="margin-top:14px"><button class="ghost" id="vnew">Nuovo controllo</button></div>'}</div>`;
   }
   if(S.ctrl.length)h+=`<div class="card scroll"><div class="row" style="justify-content:space-between"><h2>Ultimi controlli</h2>${S.role==='admin'||S.role==='lettore'?'<a href="#registro" data-gotoctrl="1">Tutte nel registro</a>':''}</div><table class="stack" style="margin-top:10px"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Esito</th><th>Differenze</th></tr></thead><tbody>
-    ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(diffs(c))}</td></tr>`).join('')}</tbody></table></div>`;
+    ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(chi(c))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(diffs(c))}</td></tr>`).join('')}</tbody></table></div>`;
   return h;
 }
 async function vPick(odp,lett){
@@ -445,6 +445,7 @@ function drawCodes(){
 
 const ANN_MS=5*60e3;
 function canAnn(p){return!!p&&!p.annullato&&(S.role==='admin'||(S.role==='operatore'&&p.uid===S.me.id&&Date.now()-p.tsMs<ANN_MS))}
+function chi(r){return r?.operatoreOrig||nm(r?.uid)}
 function nm(id){return id===S.me.id&&S.me.name?S.me.name:(S.names[id]||'Utente')}
 
 function filtered(mine){
@@ -466,7 +467,7 @@ function vRegistro(mine){
    <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} punzonature${S.punz.length>=S.punzLimit?` (ultime ${S.punzLimit})`:''}</span>
    <span class="row">${S.punz.length>=S.punzLimit?'<button class="ghost" id="more">Carica più vecchie</button>':''}${S.downloads&&!mine?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
    <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>ODP</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lungh.</th><th>Esito</th><th>Controllo</th><th>Foto</th>${S.role==='admin'||mine?'<th></th>':''}</tr></thead><tbody>
-   ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(nm(p.uid))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}</td>
+   ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}</td>
    <td class="keep">${p.annullato?`Annullata: ${esc(p.annullato.motivo)}`:(p.ripetuta?'OK (ripetuta)':'OK')+(p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?' · etichetta ✓':' · etichetta con differenze'):'')}</td><td class="keep">${p.verifica?(p.verifica.esito==='conforme'?'✓ verificata':'<b style="color:var(--red)">✗ non conforme</b>')+`<br><span class="mute">${esc(fmtT(p.verifica.tsMs))}</span>`:'—'}</td><td class="keep">${fotoA(p.fotoId)}</td>
    ${S.role==='admin'||mine?`<td class="keep">${canAnn(p)?`<button class="ghost" data-ann="${esc(p.id)}" style="min-height:36px;padding:4px 10px">Annulla</button>`:''}</td>`:''}</tr>`).join('')}
    </tbody></table>${rows.length?'':'<p class="mute">Nessuna punzonatura.</p>'}</div>`;
@@ -483,7 +484,7 @@ function vRegCtrl(){
    <span class="row">${S.ctrl.length>=S.ctrlLimit?'<button class="ghost" id="moreC">Carica più vecchie</button>':''}${S.downloads?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
    <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Pressa</th><th>Lega</th><th>Colata</th><th>Lunghezza</th><th>Esito</th><th>Foto</th></tr></thead><tbody>
    ${rows.map(c=>{const r=c.rilevato||{},a=c.atteso||{},e=c.esiti||{},cell=(k,rv,av)=>`${esc(rv??'—')}${e[k]===false?` <b style="color:var(--red)">✗</b><br><span class="mute">atteso ${esc(av)}</span>`:''}`;
-     return`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${esc(c.pressa||'')}</td>
+     return`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(chi(c))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${esc(c.pressa||'')}</td>
      <td>${cell('Lega',r.lega,a.lega)}</td><td>${cell('Colata',r.colata,a.colata)}</td>
      <td class="t">${esc(r.lunghezza!=null?fmtN(r.lunghezza)+' mm':'—')}${e.Lunghezza==='avviso'||e.Lunghezza===false?` <b style="color:#c79a00">⚠</b><br><span class="mute">indicata ${esc(fmtN(a.lunghezza))} (−${esc(c.tolleranza?.meno??0)}/+${esc(c.tolleranza?.piu??0)})</span>`:''}</td>
      <td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}${c.daFoto?'<br><span class="mute">da foto</span>':''}</td>
@@ -657,9 +658,9 @@ async function loadNames(ids){
   try{const ps=await S.user.profiles(need);for(const i of need)S.names[i]=ps?.[i]?.name||'Utente'}catch{}
 }
 async function exportXls(){
-  const rows=filtered(false).map(p=>({'Data e ora':fmtT(p.tsMs),Operatore:nm(p.uid),ODP:p.odp,Lega:p.lega,Colata:p.colata,'Colata letta':p.colataLetta,Profilo:p.profilo,Lunghezza:p.lunghezza,Cliente:p.cliente,
+  const rows=filtered(false).map(p=>({'Data e ora':fmtT(p.tsMs),Operatore:chi(p),ODP:p.odp,Lega:p.lega,Colata:p.colata,'Colata letta':p.colataLetta,Profilo:p.profilo,Lunghezza:p.lunghezza,Cliente:p.cliente,
     Esito:p.annullato?'Annullata: '+p.annullato.motivo:p.esito,Ripetuta:p.ripetuta?'Sì':'No',Controllo:p.verifica?(p.verifica.esito==='conforme'?'Verificata':'Non conforme')+' il '+fmtT(p.verifica.tsMs):'','Etichetta letta':p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'Tutto corrisponde':'Differenze: '+Object.entries(p.letturaEtichetta.esiti||{}).filter(x=>x[1]===false).map(x=>x[0]).join(', ')):'',Foto:p.fotoId?'Sì':'No'}));
-  const cr=filteredCtrl().map(c=>({'Data e ora':fmtT(c.tsMs),'Controllato da':nm(c.uid),ODP:c.odp,Pressa:c.pressa||'',
+  const cr=filteredCtrl().map(c=>({'Data e ora':fmtT(c.tsMs),'Controllato da':chi(c),ODP:c.odp,Pressa:c.pressa||'',
     'Lega rilevata':c.rilevato?.lega,'Lega attesa':c.atteso?.lega,'Colata rilevata':c.rilevato?.colata,'Colata attesa':c.atteso?.colata,
     'Lunghezza misurata':c.rilevato?.lunghezza,'Lunghezza ordine':c.atteso?.lunghezza,'Avviso lunghezza':c.avvisoLunghezza?'Fuori tolleranza indicata':'',
     'Toll. meno':c.tolleranza?.meno,'Toll. più':c.tolleranza?.piu,Esito:c.esito,Differenze:diffs(c),'Da foto':c.daFoto?'Sì':'No',Foto:c.fotoId?'Sì':'No'}));
