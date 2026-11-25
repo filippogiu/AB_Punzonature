@@ -104,6 +104,10 @@ grant select, update on public.profili to authenticated;
 grant select, insert, update, delete on public.ordini, public.config to authenticated;
 grant select, insert, update on public.punzonature to authenticated;
 grant select, insert on public.controlli to authenticated;
+-- la funzione gestione-utenti usa il ruolo di servizio: nei progetti nuovi va autorizzato esplicitamente
+grant usage on schema public to service_role;
+grant select, insert, update on public.profili to service_role;
+grant select on public.ordini, public.config, public.punzonature, public.controlli to service_role;
 revoke execute on function public.nuovo_utente() from public, anon, authenticated;
 revoke execute on function public.protezione_punzonature() from public, anon, authenticated;
 revoke execute on function public.mio_ruolo() from public, anon;
