@@ -344,8 +344,7 @@ function tolDi(o){const t=o.pressa&&tolPresse()[o.pressa];if(t)return{...t,da:'p
 function esitiVerifica(o){
   const V=S.V,eq=(a,b)=>norm(a)===norm(b),L=parseLen(V.lung),T=tolDi(o),tm=Number(T?.meno||0),tp=Number(T?.piu||0);
   return[['Lega',V.lega,o.lega,V.lega?eq(V.lega,o.lega):null],['Colata',V.colata,o.colata,V.colata?eq(V.colata,o.colata):null],
-    ['Profilo',V.prof,o.profilo,V.prof?eq(V.prof,o.profilo):null],
-    ['Lunghezza',L==null?'':L+' mm',`${fmtN(o.lunghezza)} mm (−${tm} / +${tp})`,L==null?null:L>=Number(o.lunghezza)-tm&&L<=Number(o.lunghezza)+tp]];
+    ['Lunghezza',L==null?'':L+' mm',`${fmtN(o.lunghezza)} mm (−${tm} / +${tp})`,L==null?null:(L>=Number(o.lunghezza)-tm&&L<=Number(o.lunghezza)+tp)?true:'avviso']];
 }
 function vVerifica(){
   const V=S.V;
@@ -362,7 +361,7 @@ function vVerifica(){
      ${V.fotoUrl?`<img class="thumb" src="${esc(V.fotoUrl)}" alt="Foto etichetta">`:''}
      ${V.leggendo?'<div class="msg info">Lettura etichetta in corso… (la prima volta può servire mezzo minuto)</div>':''}${V.lett?.err?`<div class="msg err">${esc(V.lett.err)}</div>`:''}</div>`;
   }else{
-    const o=V.sel,prev=V.prev.filter(p=>!p.annullato),es=esitiVerifica(o),filled=es.every(x=>x[3]!=null),ok=filled&&es.every(x=>x[3]);
+    const o=V.sel,prev=V.prev.filter(p=>!p.annullato),es=esitiVerifica(o),filled=es[0][3]!=null&&es[1][3]!=null,ok=filled&&es[0][3]===true&&es[1][3]===true,avvL=es[2][3]==='avviso';
     h+=`<div class="card"><div class="step"><div class="num done">1</div><h2>Ordine ${esc(o.odp)}</h2></div>
      <div class="grid"><div class="kv"><span>Lega</span><b>${esc(o.lega)}</b></div><div class="kv"><span>Colata</span><b>${esc(o.colata)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div><div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pressa</span><b>${esc(o.pressa||'—')}</b></div><div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
      ${prev.length?`<h3 style="margin-top:16px">Punzonature registrate</h3><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>Colata letta</th><th>Etichetta</th></tr></thead><tbody>${prev.map(p=>`<tr><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(nm(p.uid))}</td><td>${esc(p.colataLetta)}</td><td>${p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'✓ corrisponde':'con differenze'):'non letta'}</td></tr>`).join('')}</tbody></table>`
@@ -373,16 +372,16 @@ function vVerifica(){
      <p class="mute">Scrivi quello che leggi sulla barra o sull'etichetta. ${V.lett&&!V.lett.err?'Precompilati dalla foto: correggili se serve, la lunghezza è quella dell\'etichetta finché non scrivi quella misurata.':''}</p>
      <div class="grid"><div><label for="vLega">Lega punzonata</label><input id="vLega" type="text" class="big" autocapitalize="characters" value="${esc(V.lega)}"></div>
      <div><label for="vCol">Colata punzonata</label><input id="vCol" type="text" class="big" autocapitalize="characters" value="${esc(V.colata)}"></div>
-     <div><label for="vProf">Profilo</label><input id="vProf" type="text" class="big" autocapitalize="characters" value="${esc(V.prof)}"></div>
-     <div><label for="vLung">Lunghezza mis. (mm)</label><input id="vLung" type="text" class="big" inputmode="decimal" value="${esc(V.lung)}"></div></div>
+     <div><label for="vLung">Lunghezza mis. (mm, facoltativa)</label><input id="vLung" type="text" class="big" inputmode="decimal" value="${esc(V.lung)}"></div></div>
      ${tolDi(V.sel)?`<p class="mute">Tolleranza lunghezza (${esc(tolDi(V.sel).da)}): −${esc(tolDi(V.sel).meno)} / +${esc(tolDi(V.sel).piu)} mm.</p>`:`<div class="msg warn">${V.sel.pressa?'Nessuna tolleranza per la pressa '+esc(V.sel.pressa):'Pressa non nota per questo ordine (ricarica l\'export)'}: serve la misura esatta.</div>`}</div>
     <div class="card"><div class="step"><div class="num">3</div><h2>Esito</h2></div>
-     <table><thead><tr><th>Campo</th><th>Rilevato</th><th>Atteso</th><th></th></tr></thead><tbody>${es.map(([n,a,b,r])=>`<tr><td>${n}</td><td>${esc(a||'—')}</td><td>${esc(b)}</td><td>${r==null?'':r?'✓':'<b style="color:var(--red)">✗</b>'}</td></tr>`).join('')}</tbody></table>
-     ${filled?(ok?'<div class="msg ok">✓ Conforme: tutti i valori corrispondono all\'ordine.</div>':`<div class="msg err">NON conforme: ${es.filter(x=>!x[3]).map(x=>x[0]).join(', ')}.</div>`):'<p class="mute">Compila tutti e quattro i valori per avere l\'esito.</p>'}
+     <table><thead><tr><th>Campo</th><th>Rilevato</th><th>Atteso</th><th></th></tr></thead><tbody>${es.map(([n,a,b,r])=>`<tr><td>${n}</td><td>${esc(a||'—')}</td><td>${esc(b)}</td><td>${r==null?'':r==='avviso'?'<b style="color:#c79a00">⚠</b>':r?'✓':'<b style="color:var(--red)">✗</b>'}</td></tr>`).join('')}</tbody></table>
+     ${filled?(ok?'<div class="msg ok">✓ Conforme: lega e colata corrispondono all\'ordine.</div>':`<div class="msg err">NON conforme: ${es.filter(x=>x[3]===false).map(x=>x[0]).join(', ')}.</div>`):'<p class="mute">Inserisci lega e colata per avere l\'esito.</p>'}
+     ${avvL?'<div class="msg warn">La lunghezza è diversa da quella indicata per questa pressa. Solo un avviso: non rende il controllo non conforme.</div>':''}
      ${S.role!=='lettore'?`<div class="row" style="margin-top:14px"><button class="red" id="vsave" ${!filled||V.saving?'disabled':''}>${V.saving?'Salvataggio…':'Salva controllo'}</button><button class="ghost" id="vnew">Nuovo controllo</button></div>`:'<p class="mute">Con il tuo accesso in sola lettura il controllo si vede a schermo ma non viene salvato.</p><div class="row" style="margin-top:14px"><button class="ghost" id="vnew">Nuovo controllo</button></div>'}</div>`;
   }
   if(S.ctrl.length)h+=`<div class="card scroll"><div class="row" style="justify-content:space-between"><h2>Ultimi controlli</h2>${S.role==='admin'||S.role==='lettore'?'<a href="#registro" data-gotoctrl="1">Tutte nel registro</a>':''}</div><table class="stack" style="margin-top:10px"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Esito</th><th>Differenze</th></tr></thead><tbody>
-    ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(Object.entries(c.esiti||{}).filter(x=>!x[1]).map(x=>x[0]).join(', '))}</td></tr>`).join('')}</tbody></table></div>`;
+    ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(diffs(c))}</td></tr>`).join('')}</tbody></table></div>`;
   return h;
 }
 async function vPick(odp,lett){
@@ -407,7 +406,7 @@ async function vSave(){
     const fotoId='',link=V.prev.find(p=>!p.annullato)?.id||null;
     const es=esitiVerifica(o),rec={tsMs:Date.now(),uid:S.me.id,odp:o.odp,rilevato:{lega:norm(V.lega),colata:norm(V.colata),profilo:norm(V.prof),lunghezza:parseLen(V.lung)},
       atteso:{lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza},tolleranza:tolDi(o)||{meno:0,piu:0,da:'esatta'},pressa:o.pressa||'',
-      esiti:Object.fromEntries(es.map(x=>[x[0],x[3]])),esito:es.every(x=>x[3])?'conforme':'non conforme',fotoId,daFoto:!!(V.lett&&!V.lett.err)};
+      esiti:Object.fromEntries(es.map(x=>[x[0],x[3]])),esito:es[0][3]===true&&es[1][3]===true?'conforme':'non conforme',avvisoLunghezza:es[2][3]==='avviso',fotoId,daFoto:!!(V.lett&&!V.lett.err)};
     rec.punzRef=link;
     const it={kind:'ctrl',id:newId(),rec,blob:V.file&&S.assets?V.file:null,link};
     const r=await salva(it);
@@ -456,7 +455,7 @@ function filteredCtrl(){
   const q=norm(S.rq),f=S.rFrom?new Date(S.rFrom).getTime():0,t=S.rTo?new Date(S.rTo).getTime()+864e5:Infinity;
   return S.ctrl.filter(c=>(!S.rUser||c.uid===S.rUser)&&c.tsMs>=f&&c.tsMs<t&&(!q||[c.odp,c.atteso?.lega,c.atteso?.colata,c.atteso?.profilo,c.rilevato?.colata].some(x=>String(x??'').toUpperCase().includes(q))));
 }
-const diffs=c=>Object.entries(c.esiti||{}).filter(x=>!x[1]).map(x=>x[0]).join(', ');
+const diffs=c=>Object.entries(c.esiti||{}).filter(x=>x[1]===false).map(x=>x[0]).join(', ')+(c.avvisoLunghezza?' (lunghezza fuori tolleranza: avviso)':'');
 function vRegistro(mine){
   if(!mine&&S.rTab==='ctrl')return vRegCtrl();
   const rows=filtered(mine),users=[...new Set(S.punz.map(p=>p.uid))];
@@ -482,11 +481,11 @@ function vRegCtrl(){
    <div class="full"><label for="rUser">Controllato da</label><select id="rUser"><option value="">Tutti</option>${users.map(u=>`<option value="${esc(u)}" ${u===S.rUser?'selected':''}>${esc(nm(u))}</option>`).join('')}</select></div></div>
    <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} verifiche, ${nc} non conformi${S.ctrl.length>=S.ctrlLimit?` (ultime ${S.ctrlLimit})`:''}</span>
    <span class="row">${S.ctrl.length>=S.ctrlLimit?'<button class="ghost" id="moreC">Carica più vecchie</button>':''}${S.downloads?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
-   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Pressa</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lunghezza</th><th>Esito</th><th>Foto</th></tr></thead><tbody>
+   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Pressa</th><th>Lega</th><th>Colata</th><th>Lunghezza</th><th>Esito</th><th>Foto</th></tr></thead><tbody>
    ${rows.map(c=>{const r=c.rilevato||{},a=c.atteso||{},e=c.esiti||{},cell=(k,rv,av)=>`${esc(rv??'—')}${e[k]===false?` <b style="color:var(--red)">✗</b><br><span class="mute">atteso ${esc(av)}</span>`:''}`;
      return`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${esc(c.pressa||'')}</td>
-     <td>${cell('Lega',r.lega,a.lega)}</td><td>${cell('Colata',r.colata,a.colata)}</td><td>${cell('Profilo',r.profilo,a.profilo)}</td>
-     <td class="t">${cell('Lunghezza',r.lunghezza!=null?fmtN(r.lunghezza)+' mm':null,`${fmtN(a.lunghezza)} (−${c.tolleranza?.meno??0}/+${c.tolleranza?.piu??0})`)}</td>
+     <td>${cell('Lega',r.lega,a.lega)}</td><td>${cell('Colata',r.colata,a.colata)}</td>
+     <td class="t">${esc(r.lunghezza!=null?fmtN(r.lunghezza)+' mm':'—')}${e.Lunghezza==='avviso'||e.Lunghezza===false?` <b style="color:#c79a00">⚠</b><br><span class="mute">indicata ${esc(fmtN(a.lunghezza))} (−${esc(c.tolleranza?.meno??0)}/+${esc(c.tolleranza?.piu??0)})</span>`:''}</td>
      <td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}${c.daFoto?'<br><span class="mute">da foto</span>':''}</td>
      <td>${fotoA(c.fotoId)}</td></tr>`}).join('')}
    </tbody></table>${rows.length?'':'<p class="mute">Nessuna verifica.</p>'}</div>`;
@@ -662,7 +661,7 @@ async function exportXls(){
     Esito:p.annullato?'Annullata: '+p.annullato.motivo:p.esito,Ripetuta:p.ripetuta?'Sì':'No',Controllo:p.verifica?(p.verifica.esito==='conforme'?'Verificata':'Non conforme')+' il '+fmtT(p.verifica.tsMs):'','Etichetta letta':p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'Tutto corrisponde':'Differenze: '+Object.entries(p.letturaEtichetta.esiti||{}).filter(x=>x[1]===false).map(x=>x[0]).join(', ')):'',Foto:p.fotoId?'Sì':'No'}));
   const cr=filteredCtrl().map(c=>({'Data e ora':fmtT(c.tsMs),'Controllato da':nm(c.uid),ODP:c.odp,Pressa:c.pressa||'',
     'Lega rilevata':c.rilevato?.lega,'Lega attesa':c.atteso?.lega,'Colata rilevata':c.rilevato?.colata,'Colata attesa':c.atteso?.colata,
-    'Profilo rilevato':c.rilevato?.profilo,'Profilo atteso':c.atteso?.profilo,'Lunghezza misurata':c.rilevato?.lunghezza,'Lunghezza ordine':c.atteso?.lunghezza,
+    'Lunghezza misurata':c.rilevato?.lunghezza,'Lunghezza ordine':c.atteso?.lunghezza,'Avviso lunghezza':c.avvisoLunghezza?'Fuori tolleranza indicata':'',
     'Toll. meno':c.tolleranza?.meno,'Toll. più':c.tolleranza?.piu,Esito:c.esito,Differenze:diffs(c),'Da foto':c.daFoto?'Sì':'No',Foto:c.fotoId?'Sì':'No'}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{Nota:'Nessuna punzonatura nel filtro'}]),'Punzonature');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cr.length?cr:[{Nota:'Nessuna verifica nel filtro'}]),'Verifiche');
