@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Punzonatura barre</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#0d0f11">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="config.js"></script>
+<script src="lib/supabase.js"></script>
+<script src="lib/JsBarcode.all.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<style>
+/*
+VOICE: control room di reparto — asciutto, leggibile coi guanti, nessun ornamento.
+IDEA: il cartellino di produzione che accompagna il fascio di barre.
+PICTURE: i due barcode Code 128 su fondo bianco, grandi, sono l'oggetto centrale.
+COLOUR and TYPE: pannello acciaio, nero, bianco, rosso allarme; Inter Tight + Inter.
+LAYOUT: una colonna di lavoro a passi numerati; registro e ordini come tabelle.
+*/
+:root{color-scheme:light dark;
+--bg:light-dark(#d5dbe0,#16191c);--panel:light-dark(#ffffff,#21262b);--ink:light-dark(#0d0f11,#eef1f3);
+--mute:light-dark(#56606a,#9aa5ae);--line:light-dark(#b9c2c9,#343b42);--red:#e8251a;--redbg:light-dark(#fde4e2,#3a1714);
+--warn:light-dark(#fff3c4,#3a3113);--okbg:light-dark(#0d0f11,#eef1f3);--okink:light-dark(#ffffff,#0d0f11)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Inter Tight",Inter,sans-serif;line-height:1.1;margin:0;text-wrap:balance}
+h1{font-size:clamp(24px,4vw,34px)}h2{font-size:22px}h3{font-size:17px}
+header{background:var(--ink);color:var(--bg);padding:14px max(4vw,16px);display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between}
+header h1{color:light-dark(#fff,#16191c)}
+.who{font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:13px;font-weight:600;background:var(--red);color:#fff}
+nav{display:flex;flex-wrap:wrap;gap:4px;padding:0 max(4vw,16px);background:var(--ink)}
+nav a{flex:none;color:light-dark(#c9d0d6,#4a535b);text-decoration:none;padding:10px 16px;font-weight:600;border-radius:8px 8px 0 0}
+nav a.on{background:var(--bg);color:var(--ink)}
+main{max-width:1100px;margin:0 auto;padding:24px max(4vw,16px) 60px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:clamp(16px,3vw,24px);margin-bottom:16px}
+.step{display:flex;gap:12px;align-items:baseline;margin-bottom:12px}
+.num{flex:none;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--panel);display:grid;place-items:center;font-weight:700;font-family:"Inter Tight"}
+.num.done{background:var(--red)}
+label{display:block;font-weight:600;font-size:14px;margin:12px 0 6px}
+input[type=text],input[type=search],input[type=date],select{width:100%;font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:light-dark(#f6f8f9,#16191c);color:var(--ink);min-height:46px}
+input:focus-visible,button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;text-align:left}input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+.big{font-size:22px!important;font-family:"Inter Tight";letter-spacing:.02em;text-transform:uppercase}
+button,.btn{font:inherit;font-weight:600;min-height:46px;padding:10px 18px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:var(--panel);cursor:pointer}
+button.ghost{background:transparent;color:var(--ink)}button.red{background:var(--red);border-color:var(--red);color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px 16px}.full{grid-column:1/-1}
+.kv span{display:block;font-size:13px;color:var(--mute)}.kv b{display:block;font-size:18px;font-family:"Inter Tight";overflow-wrap:anywhere;line-height:1.2}
+.kv.hl{grid-column:1/-1}.kv.hl b{font-size:26px}
+.hits{display:grid;gap:6px;margin-top:10px}
+.hit{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;text-align:left;background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+.hit b{font-family:"Inter Tight"}
+.msg{padding:12px 14px;border-radius:8px;margin:12px 0;font-weight:500}
+.msg.err{background:var(--redbg);border-left:5px solid var(--red)}
+.msg.warn{background:var(--warn);border-left:5px solid #c79a00}
+.msg.ok{background:var(--okbg);color:var(--okink)}
+.msg.info{background:light-dark(#eef1f3,#1b1f23);border-left:5px solid var(--mute)}
+.check{display:flex;gap:12px;align-items:flex-start;font-weight:500;margin:12px 0;cursor:pointer}
+.check input{width:24px;height:24px;flex:none;accent-color:var(--red);margin-top:1px}
+.codes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:8px}
+.code{background:#fff;color:#000;border-radius:10px;padding:14px;border:2px solid #000}
+.code p{margin:0 0 6px;font-weight:700;font-family:"Inter Tight";font-size:15px}
+.code svg{display:block;width:100%;height:auto}
+.thumb{max-width:220px;max-height:160px;border-radius:8px;border:1px solid var(--line);display:block;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:13px;color:var(--mute);font-weight:600}
+td.n{text-align:right;white-space:nowrap}td.t{white-space:nowrap}td{overflow-wrap:anywhere}
+tr.ann td{opacity:.5;text-decoration:line-through}tr.ann td.keep{text-decoration:none;opacity:1}
+.mute{color:var(--mute);font-size:14px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;background:var(--red);width:0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0}
+.stats div{background:light-dark(#eef1f3,#16191c);border-radius:8px;padding:10px 12px}.stats b{display:block;font-size:24px;font-family:"Inter Tight"}
+dialog{border:none;border-radius:12px;padding:22px;max-width:440px;width:92vw;background:var(--panel);color:var(--ink)}
+dialog::backdrop{background:#0009}
+.hidden{display:none!important}
+.hbtn{min-height:36px;padding:4px 12px;font-size:14px;background:transparent;border:1px solid currentColor;color:inherit;margin-left:4px}
+.login{max-width:420px;margin:24px auto}
+.obbar{background:#c79a00;color:#000;font-weight:600;text-align:center;padding:8px 12px;font-size:14px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+label.btn{display:inline-flex;align-items:center;justify-content:center;margin:0;font-size:16px;color:var(--panel)}label.btn.ghost{background:transparent;color:var(--ink)}
+.fbtn{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.fbtn .mute{min-width:7.5em}
+input[type=file]{font:inherit;font-size:15px;max-width:100%}
+input[type=file]::file-selector-button{font:inherit;font-weight:600;min-height:44px;padding:8px 16px;margin-right:10px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:var(--panel);cursor:pointer}
+.lbl{font-weight:600;font-size:14px;margin:12px 0 6px}
+body.full header,body.full nav,body.full #diag,body.full #demo,body.full #toast{display:none!important}
+body.full{background:#fff;color:#000}body.full main{max-width:none;padding:0}
+.fs{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:#fff;color:#000;padding:max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom))}
+.fsbar{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:15px}
+.fsbar button{color:#000;border-color:#000;background:#fff;min-height:44px;padding:6px 14px}
+.fscodes{flex:1;display:flex;flex-direction:column;justify-content:space-evenly;gap:14px;padding:12px 0}
+.fscode{display:flex;flex-direction:column;gap:6px}.fscode p{margin:0;font:600 16px Inter,sans-serif;letter-spacing:.02em}.fscode p b{font:700 24px "Inter Tight",Inter,sans-serif;margin-left:6px}
+.fscode svg{display:block;width:100%;height:min(26vh,190px)}
+.fsdone{min-height:64px;font-size:19px;width:100%}
+@media(orientation:landscape) and (max-height:600px){.fscodes{flex-direction:row}.fscode{flex:1}.fscode svg{height:min(50vh,190px)}}
+.big-btn{min-height:56px;font-size:18px;padding:12px 22px}
+.demo{background:var(--red);color:#fff;text-align:center;padding:6px;font-size:14px;font-weight:600}
+pre,.scroll{overflow-x:auto}
+@media(max-width:600px){nav a{padding:9px 11px;font-size:15px}header{padding-block:10px}main{padding-top:16px}th,td{padding:7px 5px}.kv.hl b{font-size:22px}table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mute)}.stack td:empty{display:none}}
+@media(prefers-reduced-motion:no-preference){.fade{animation:f .25s ease-out}@keyframes f{from{opacity:0;transform:translateY(6px)}}}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+<div id="diag" class="demo hidden">Il tuo utente è in sola lettura: puoi consultare ma non salvare.</div>
+<header><h1>Punzonatura barre</h1><div class="who"><span id="me">Connessione…</span><span id="role" class="badge hidden"></span><span id="hdrBtns" class="hidden"><button class="hbtn" id="pinBtn">Cambia PIN</button><button class="hbtn" id="logout">Esci</button></span></div></header>
+<nav id="nav"></nav><div id="ob" class="obbar hidden" role="status"></div>
+<main id="view"><div class="card">Caricamento…</div></main>
+<dialog id="dlg"><h3 id="dlgT"></h3><p id="dlgP" class="mute"></p><label for="dlgI" id="dlgL" class="hidden">Motivo</label><input type="text" id="dlgI" class="hidden"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="ghost" id="dlgNo">Annulla</button><button class="red" id="dlgOk">Conferma</button></div></dialog>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=v=>String(v??'').trim().toUpperCase();
+const fmtT=ms=>ms?new Date(ms).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+const fmtN=v=>v===''||v==null?'':Number(v).toLocaleString('it-IT');
+
+/* ---------- stato ---------- */
+const S={db:null,user:null,assets:null,downloads:null,demo:false,me:{id:'',name:''},role:'operatore',
+  ordini:new Map(),ordLoaded:false,punz:[],punzLimit:300,cfg:{fotoObbligatoria:false},compat:[],names:{},
+  outbox:[],lastImp:null,sample:null,lett:null,leggendo:false,sel:null,prev:[],colataLetta:'',chkProf:false,chkAgain:false,foto:null,fotoUrl:'',saving:false,done:null,q:'',
+  V:{sel:null,prev:[],lett:null,lega:'',colata:'',lung:'',prof:'',q:'',leggendo:false,saving:false,saved:null},ctrl:[],ctrlLimit:300,rTab:'punz',imp:null,impBusy:false,impProg:0,rq:'',rFrom:'',rTo:'',rUser:'',oq:''};
+
+const routes=()=>S.role==='admin'?[['punzona','Punzona'],['verifica','Verifica'],['registro','Registro'],['ordini','Dati']]:S.role==='lettore'?[['registro','Registro'],['verifica','Verifica']]:[['punzona','Punzona'],['verifica','Verifica'],['mie','Le mie punzonature']];
+const cur=()=>{const h=location.hash.slice(1);const r=routes().map(x=>x[0]);return r.includes(h)?h:r[0]};
+
+/* ---------- regole di verifica ---------- */
+function legheDiColata(col){
+  const s=new Set();for(const o of S.ordini.values())if(o.colata===col)s.add(o.lega);
+  return s;
+}
+function compatOk(col,lega){return S.compat.some(c=>c.colata===col&&c.lega===lega)}
+function conflittoLega(o){
+  const s=[...legheDiColata(o.colata)].filter(l=>l!==o.lega&&!compatOk(o.colata,l)&&!compatOk(o.colata,o.lega));
+  return s;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const a=document.activeElement,fid=a&&a.id&&a.tagName==='INPUT'&&a.type!=='file'&&a.type!=='checkbox'?a.id:'',sel=fid&&a.type!=='date'?[a.selectionStart,a.selectionEnd]:null;
+  paint();
+  if(fid){const n=document.getElementById(fid);if(n){n.focus();if(sel)try{n.setSelectionRange(sel[0],sel[1])}catch{}}}
+}
+/* aggiorna solo ciò che cambia: il campo in cui si sta scrivendo non viene ricreato (la tastiera resta com'è) */
+function patch(el,html){const t=document.createElement('div');t.innerHTML=html;morph(el,t)}
+function morph(a,b){
+  const ac=[...a.childNodes],bc=[...b.childNodes];
+  for(let i=0;i<bc.length;i++){
+    const n=bc[i],o=ac[i];
+    if(!o){a.appendChild(n);continue}
+    if(o.nodeType!==n.nodeType||o.nodeName!==n.nodeName||(o.nodeType===1&&(o.id!==n.id||o.namespaceURI==='http://www.w3.org/2000/svg'||(o.tagName==='INPUT'&&o.type!==n.type)))){a.replaceChild(n,o);continue}
+    if(o.nodeType!==1){if(o.nodeValue!==n.nodeValue)o.nodeValue=n.nodeValue;continue}
+    for(const at of [...o.attributes])if(!n.hasAttribute(at.name)&&at.name!=='data-l')o.removeAttribute(at.name);
+    for(const at of [...n.attributes])if(o.getAttribute(at.name)!==at.value)o.setAttribute(at.name,at.value);
+    if(o.tagName==='INPUT'){
+      if(o.type==='checkbox')o.checked=n.hasAttribute('checked');
+      else if(o.type!=='file'&&o!==document.activeElement){const v=n.getAttribute('value')??'';if(o.value!==v)o.value=v}
+      continue;
+    }
+    morph(o,n);
+    if(o.tagName==='SELECT'){const i2=[...n.options].findIndex(x=>x.hasAttribute('selected'));o.selectedIndex=i2<0?0:i2}
+  }
+  for(let i=ac.length-1;i>=bc.length;i--)if(ac[i].parentNode===a)a.removeChild(ac[i]);
+}
+function paint(){
+  if(cur()==='ordini'&&S.role==='admin'&&!S.utentiLoading){S.utentiLoading=true;loadUtenti()}
+  const ob=$('#ob');if(ob){ob.classList.toggle('hidden',!S.outbox.length);ob.textContent=S.outbox.length?`Senza rete: ${S.outbox.length} ${S.outbox.length>1?'salvataggi':'salvataggio'} in attesa di invio. Non chiudere la pagina.`:''}
+  const r=cur();if(S.full&&r!=='punzona')exitFull();
+  patch($('#nav'),routes().map(([k,t])=>`<a href="#${k}" class="${k===r?'on':''}">${t}</a>`).join(''));
+  patch($('#view'),r==='punzona'?vPunzona():r==='registro'||r==='mie'?vRegistro(r==='mie'):r==='verifica'?vVerifica():vOrdini());
+  if(r==='punzona')drawCodes();
+}
+
+function vPunzona(){
+  if(S.full&&S.sel)return vFull();
+  if(S.done)return`<div class="card fade">${S.done.annullato?`<div class="msg err">Punzonatura dell'ODP ${esc(S.done.odp)} annullata: ${esc(S.done.annullato.motivo)}.</div>`:S.done.queued?`<div class="msg warn">Nessuna rete: punzonatura dell'ODP ${esc(S.done.odp)} salvata sul telefono alle ${esc(fmtT(S.done.tsMs))}. Verrà inviata appena torna la connessione: non chiudere la pagina finché non è inviata.</div>`
+    :`<div class="msg ok">Registrato: ODP ${esc(S.done.odp)} punzonato e verificato alle ${esc(fmtT(S.done.tsMs))}.</div>`}
+    <div class="grid"><div class="kv"><span>Lega</span><b>${esc(S.done.lega)}</b></div><div class="kv"><span>Colata</span><b>${esc(S.done.colata)}</b></div></div>
+    <div class="row" style="margin-top:18px"><button id="again">Nuovo ordine</button>${!S.done.queued&&canAnn(S.done)?`<button class="ghost" data-ann="${esc(S.done.id)}">Annulla (errore)</button>`:''}</div>
+    ${!S.done.queued&&canAnn(S.done)&&S.role!=='admin'?'<p class="mute">Puoi annullarla tu entro 5 minuti; dopo solo il responsabile.</p>':''}</div>`;
+  if(!S.ordLoaded)return`<div class="card">Caricamento ordini…</div>`;
+  if(!S.ordini.size)return`<div class="card"><h2>Nessun ordine caricato</h2><p class="mute">${S.role==='admin'?'Vai su "Ordini e dati" e carica l\'export Excel del gestionale.':'Chiedi al responsabile di caricare l\'export del gestionale.'}</p></div>`;
+  const o=S.sel;
+  let h=`<div class="card"><div class="step"><div class="num ${o?'done':''}">1</div><h2>Ordine di produzione</h2></div>`;
+  if(!o){
+    const q=norm(S.q),hits=q.length<2?[]:[...S.ordini.values()].filter(x=>x.odp.toUpperCase().includes(q)||x.colata.includes(q)||String(x.profilo).toUpperCase().includes(q)).slice(0,12);
+    h+=`<label for="q">Cerca ODP (anche solo il numero, es. 8099)</label><input id="q" type="search" class="big" autocomplete="off" inputmode="decimal" value="${esc(S.q)}" placeholder="2026.2.…">
+    <div class="hits">${hits.map(x=>`<button class="hit" data-odp="${esc(x.odp)}"><b>${esc(x.odp)}</b><span>${esc(x.profilo)} · ${esc(fmtN(x.lunghezza))} mm · ${esc(x.lega)}</span></button>`).join('')}</div>
+    ${q.length>=2&&!hits.length?'<div class="msg info">Nessun ordine trovato. Se è nuovo, va ricaricato l\'export dal gestionale.</div>':''}${vImp()}
+    <p class="lbl">Oppure scatta una foto all'etichetta: l'app legge i dati da sola</p>${fotoBtns('foto1')}
+    ${S.fotoUrl?`<img class="thumb" src="${esc(S.fotoUrl)}" alt="Foto etichetta">`:''}
+    ${S.leggendo?'<div class="msg info">Lettura etichetta in corso… (la prima volta può servire mezzo minuto)</div>':''}
+    ${S.lett&&S.lett.err?`<div class="msg err">${esc(S.lett.err)}</div>`:''}</div>`;
+    return h;
+  }
+  const conf=conflittoLega(o),prev=S.prev.filter(p=>!p.annullato);
+  h+=`<div class="grid fade"><div class="kv hl"><span>ODP</span><b>${esc(o.odp)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div>
+   <div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pezzi</span><b>${esc(fmtN(o.pezzi))}</b></div>
+   <div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
+   ${o.nota?`<div class="msg info">${esc(o.nota)}</div>`:''}
+   ${conf.length?`<div class="msg err">Attenzione: la colata ${esc(o.colata)} risulta anche su altre leghe (${conf.map(esc).join(', ')}). Avvisa il responsabile prima di punzonare.</div>`:''}
+   ${prev.length?`<div class="msg warn">Questo ODP è già stato punzonato ${prev.length} ${prev.length>1?'volte':'volta'}, l'ultima il ${esc(fmtT(prev[0].tsMs))} da ${esc(nm(prev[0].uid))}.
+     <label class="check"><input type="checkbox" id="chkAgain" ${S.chkAgain?'checked':''}> Confermo che serve una nuova punzonatura (es. barre aggiuntive)</label></div>`:''}
+   <div class="row" style="margin-top:12px"><button class="ghost" id="chg">Cambia ordine</button></div></div>`;
+  const colOk=S.colataLetta&&norm(S.colataLetta)===o.colata, colKo=S.colataLetta&&norm(S.colataLetta).length>=o.colata.length&&!colOk;
+  h+=`<div class="card"><div class="step"><div class="num ${colOk&&S.chkProf?'done':''}">2</div><h2>Verifica materiale</h2></div>
+   <label for="col">Colata letta sull'etichetta del materiale</label><input id="col" type="text" class="big" autocomplete="off" autocapitalize="characters" value="${esc(S.colataLetta)}" placeholder="es. 526027A3">
+   ${colOk?'<div class="msg ok">✓ La colata corrisponde all\'ordine.</div>':colKo?`<div class="msg err">La colata non corrisponde all'ordine. Non punzonare e verifica con il responsabile.</div>`:''}
+   <label class="check"><input type="checkbox" id="chkProf" ${S.chkProf?'checked':''}> Profilo ${esc(o.profilo)} e lunghezza ${esc(fmtN(o.lunghezza))} mm corrispondono al materiale</label>
+   <p class="lbl">Foto dell'etichetta ${S.cfg.fotoObbligatoria?'(obbligatoria)':'(facoltativa)'}</p>
+   ${fotoBtns('foto')}
+   ${S.fotoUrl?`<img class="thumb" src="${esc(S.fotoUrl)}" alt="Foto etichetta">`:''}
+   ${S.leggendo?'<div class="msg info">Lettura etichetta in corso… (la prima volta può servire mezzo minuto)</div>':''}
+   ${S.lett&&!S.lett.err?vLettura(o):S.lett?.err?`<div class="msg err">${esc(S.lett.err)}</div>`:''}
+   ${!S.assets&&!S.demo?'<p class="mute">Il caricamento foto non è attivo per il tuo utente.</p>':''}</div>`;
+  const ready=colOk&&S.chkProf&&(!prev.length||S.chkAgain)&&!conf.length;
+  const fotoOk=!S.cfg.fotoObbligatoria||S.foto;
+  h+=`<div class="card"><div class="step"><div class="num">3</div><h2>Barcode per la punzonatrice</h2></div>
+   ${ready?`<p class="mute">Dati verificati. Premi Avanti per vedere solo i barcode a schermo intero.</p>
+   <div class="row" style="margin-top:12px"><button class="red big-btn" id="avanti" ${!fotoOk?'disabled':''}>Avanti: mostra barcode →</button>
+   ${!fotoOk?'<span class="mute">Scatta la foto dell\'etichetta per continuare.</span>':''}</div>`
+   :'<p class="mute">Il tasto Avanti compare quando la verifica del passo 2 è completa.</p>'}</div>`;
+  return h;
+}
+
+function confronto(o,l){
+  const eq=(a,b)=>a==null||a===''?null:norm(a)===norm(b);
+  return[['ODP',l.odp,o.odp,eq(l.odp,o.odp)],['Colata',l.colata,o.colata,eq(l.colata,o.colata)],['Lega',l.lega,o.lega,eq(l.lega,o.lega)],
+    ['Profilo',l.profilo,o.profilo,eq(l.profilo,o.profilo)],['Lunghezza',l.lunghezza,o.lunghezza,l.lunghezza==null||l.lunghezza===''?null:Number(l.lunghezza)===Number(o.lunghezza)]];
+}
+function vLettura(o){
+  const c=confronto(o,S.lett),ko=c.filter(x=>x[3]===false),nl=c.filter(x=>x[3]==null);
+  return`<table style="margin-top:12px"><thead><tr><th>Campo</th><th>Etichetta</th><th>Ordine</th><th></th></tr></thead><tbody>${c.map(([n,a,b,ok])=>`<tr><td>${n}</td><td>${esc(a??'non letto')}</td><td>${esc(b)}</td><td>${ok==null?'—':ok?'✓':'<b style="color:var(--red)">✗</b>'}</td></tr>`).join('')}</tbody></table>
+  ${ko.length?`<div class="msg ${ko.some(x=>x[0]==='Colata'||x[0]==='ODP'||x[0]==='Lega')?'err':'warn'}">Non corrisponde: ${ko.map(x=>x[0]).join(', ')}. Controlla l'etichetta a occhio${ko.some(x=>x[0]==='Colata')?' e scrivi la colata a mano':''}.</div>`:nl.length?`<div class="msg warn">Dalla foto non ho letto: ${nl.map(x=>x[0]).join(', ')}. Controllali a occhio sull'etichetta.</div>`:'<div class="msg ok">✓ Etichetta letta: tutti i campi corrispondono all\'ordine.</div>'}`;
+}
+async function leggiSample(file){
+  if(!S.sample)return{err:'La lettura automatica dell\'etichetta non è disponibile su questo account: la foto resta come prova, i dati vanno inseriti guardandola.'};
+  try{
+    const img=await resizePhoto(file);
+    const prompt=`Leggi questa etichetta di un fascio di barre di alluminio (testo in italiano/tedesco, può essere ruotata). Rispondi SOLO con un oggetto JSON con queste chiavi:
+{"odp": numero dopo "Ordine" (formato tipo 2026.2.8233.0), "colata": codice dopo "Colata" (tipo 526308A3), "lega": solo il numero della lega dopo "Lega" (es. da "6082 (52) T6" scrivi "6082"), "profilo": codice dopo "Profilo" (non "Profilo Cliente"), "lunghezza": lunghezza in mm come numero intero (es. "3.000 mm" -> 3000)}
+Usa null per un campo che non riesci a leggere con certezza. Non indovinare.`;
+    const v=await S.sample.json(prompt,{images:[img],modelTier:'default'});
+    const l={odp:v?.odp??null,colata:v?.colata?norm(v.colata):null,lega:v?.lega?norm(v.lega):null,profilo:v?.profilo??null,lunghezza:v?.lunghezza??null};
+    return l;
+  }catch(e){const c=e?.code;
+    if(['sampling_disabled','images_unavailable','not_declared','capability_disabled','capability_removed'].includes(c))S.sample=null;
+    return{err:c==='not_granted'?'Lettura automatica non consentita: al primo uso va accettata la richiesta di Claude (ricarica la pagina per riproporla). Inserisci i dati a mano.'
+      :c==='rate_limited'?(e.reason==='usage_limit'?'Limite di utilizzo Claude raggiunto per questo account: inserisci i dati a mano.':'Troppe letture ravvicinate: riprova tra poco o inserisci i dati a mano.')
+      :!S.sample?'La lettura automatica dell\'etichetta non è disponibile su questo account: la foto resta come prova, i dati vanno inseriti guardandola.':'Etichetta non letta: rifai la foto più dritta e senza riflessi, o inserisci i dati a mano.'}}
+}
+/* ---- lettura etichetta: Claude se disponibile, altrimenti OCR nel telefono ---- */
+const nz=v=>String(v??'').toUpperCase().replace(/[^0-9A-Z]/g,'');
+let ocrW=null,ocrLoading=null;
+function loadScript(src){return new Promise((ok,ko)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=ko;document.head.append(e)})}
+async function ocrWorker(){
+  if(ocrW)return ocrW;if(ocrLoading)return ocrLoading;
+  ocrLoading=(async()=>{
+    if(!window.Tesseract)await loadScript('ocr/tesseract.min.js');
+    const base=new URL('ocr/',location.href).href;
+    const boot=`const LANG=${JSON.stringify(base+'lang/eng-traineddata-gz.b64.txt')};const of=self.fetch.bind(self);
+self.fetch=async(u,o)=>{if(String(u).includes('eng.traineddata')){const t=await(await of(LANG)).text(),b=atob(t.trim()),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Response(a)}return of(u,o)};
+importScripts(${JSON.stringify(base+'worker.min.js')});`;
+    const opt={workerPath:URL.createObjectURL(new Blob([boot],{type:'text/javascript'})),corePath:base+'core/',langPath:base+'lang',workerBlobURL:false,cacheMethod:'none'};
+    ocrW=await Tesseract.createWorker('eng',1,opt);
+    return ocrW;
+  })();
+  try{return await ocrLoading}finally{ocrLoading=null}
+}
+async function prepCanvas(file,rot){
+  const img=await createImageBitmap(file),k=Math.min(2,3000/Math.max(img.width,img.height)),w=Math.round(img.width*k),h=Math.round(img.height*k);
+  const c=document.createElement('canvas'),sw=rot%180!==0;c.width=sw?h:w;c.height=sw?w:h;const x=c.getContext('2d',{willReadFrequently:true});
+  x.translate(c.width/2,c.height/2);x.rotate(rot*Math.PI/180);x.drawImage(img,-w/2,-h/2,w,h);
+  const d=x.getImageData(0,0,c.width,c.height),p=d.data,hist=new Uint32Array(256);
+  for(let i=0;i<p.length;i+=4){const g=(p[i]*299+p[i+1]*587+p[i+2]*114)/1000|0;p[i]=g;hist[g]++}
+  let lo=0,hi=255,acc=0;const n=p.length/4;for(;lo<255&&(acc+=hist[lo])<n*.02;lo++);acc=0;for(;hi>0&&(acc+=hist[hi])<n*.02;hi--);
+  const sc=255/Math.max(1,hi-lo);for(let i=0;i<p.length;i+=4){const g=Math.max(0,Math.min(255,(p[i]-lo)*sc));p[i]=p[i+1]=p[i+2]=g}
+  x.setTransform(1,0,0,1,0,0);x.putImageData(d,0,0);return c;
+}
+const ocrScore=t=>(/20\d\d[.,]\d[.,]\d{4}[.,]\d/.test(t)?2:0)+(/\d{6}[A-Z]\d/.test(t.toUpperCase())?2:0)+(/\bmm\b/i.test(t)?1:0)+(/bolzano|aluminium|colata|ordine|profilo|lega/i.test(t)?1:0);
+async function ocrEtichetta(file){
+  const w=await ocrWorker();let best={score:-1,text:'',rot:0};
+  for(const rot of [90,270,0,180]){
+    await w.setParameters({tessedit_pageseg_mode:'11'});
+    const {data}=await w.recognize(await prepCanvas(file,rot)),sc=ocrScore(data.text);
+    if(sc>best.score)best={score:sc,text:data.text,rot};
+    if(sc>=3)break;
+  }
+  if(best.score>0){await w.setParameters({tessedit_pageseg_mode:'12'});const {data}=await w.recognize(await prepCanvas(file,best.rot));best.text+='\n'+data.text}
+  return best.text;
+}
+async function leggiFoto(file){
+  if(S.sample){const l=await leggiSample(file);if(!l.err)return{lett:l}}
+  try{return{text:await ocrEtichetta(file)}}catch(e){console.warn(e);return{err:'Lettura della foto non riuscita su questo dispositivo: inserisci i dati guardando la foto.'}}
+}
+function ordineDaTesto(text){
+  const T=nz(text),all=[...S.ordini.values()],h=all.filter(o=>T.includes(nz(o.odp)));
+  if(h.length===1)return h[0];
+  const col=new Set(text.toUpperCase().match(/\d{6}[A-Z]\d/g)||[]),c=all.filter(o=>col.has(o.colata)&&T.includes(nz(o.profilo)));
+  return c.length===1?c[0]:null;
+}
+function lettFromOcr(text,o){
+  const T=nz(text),U=text.toUpperCase(),has=v=>v!=null&&v!==''&&T.includes(nz(v)),tok=v=>new RegExp('(^|[^0-9])'+String(v).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^0-9]|$)').test(U);
+  const odpM=(text.match(/20\d\d[.,]\d[.,]\d{4}[.,]\d/g)||[]).map(x=>x.replace(/,/g,'.')),colM=U.match(/\d{6}[A-Z]\d/g)||[],lenM=text.match(/(\d{1,2}[.,]\d{3}|\d{3,5})\s*mm/i);
+  return{src:'ocr',odp:has(o.odp)?o.odp:(odpM.find(x=>x!==o.odp)||null),colata:has(o.colata)?o.colata:(colM.find(x=>x!==o.colata)||null),
+    lega:o.lega&&tok(o.lega)?o.lega:null,profilo:has(o.profilo)?o.profilo:null,lunghezza:lenM?parseLen(lenM[1]):(o.lunghezza>=1000&&[String(o.lunghezza),Number(o.lunghezza).toLocaleString('it-IT'),Number(o.lunghezza).toLocaleString('en-US')].some(tok)?o.lunghezza:null)};
+}
+function risolvi(res,oKnown){
+  if(res.err)return{err:res.err};
+  if(res.lett){const l=res.lett,o=oKnown||(l.odp&&S.ordini.get(String(l.odp).trim()));
+    return o?{o,lett:l}:{err:l.odp?`ODP letto ${l.odp} non presente nel database: ricarica l'export o cercalo a mano.`:'ODP non leggibile dalla foto: cercalo a mano.'}}
+  const o=oKnown||ordineDaTesto(res.text);
+  return o?{o,lett:lettFromOcr(res.text,o)}:{err:'ODP non letto dalla foto: cercalo a mano, poi il confronto con la foto si fa da solo.'};
+}
+async function fotoScelta(file,fromStep1){
+  S.foto=file;if(S.fotoUrl)URL.revokeObjectURL(S.fotoUrl);S.fotoUrl=URL.createObjectURL(file);S.lett=null;S.ocrText='';
+  S.leggendo=true;render();const res=await leggiFoto(file);S.leggendo=false;S.ocrText=res.text||'';
+  const r=risolvi(res,fromStep1?null:S.sel);
+  if(r.err){S.lett={err:r.err};render();return}
+  if(fromStep1)await pick(r.o.odp);
+  S.lett=r.lett;
+  if(S.sel&&r.lett.colata&&!S.colataLetta)S.colataLetta=r.lett.colata;
+  render();
+}
+
+function parseLen(v){
+  let t=String(v??'').replace(/\s|mm/gi,'');if(!t)return null;
+  if(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t))t=t.replace(/\./g,'').replace(',','.');else t=t.replace(',','.');
+  const n=Number(t);return isFinite(n)?n:null;
+}
+const TOL_DEF={'3500':{meno:0,piu:10},'5000':{meno:300,piu:0}};
+const tolPresse=()=>({...TOL_DEF,...(S.cfg.tolPresse||{})});
+function tolDi(o){const t=o.pressa&&tolPresse()[o.pressa];if(t)return{...t,da:'pressa '+o.pressa};
+  if(S.cfg.tolMeno!=null&&S.cfg.tolPiu!=null)return{meno:S.cfg.tolMeno,piu:S.cfg.tolPiu,da:'generica'};return null}
+function esitiVerifica(o){
+  const V=S.V,eq=(a,b)=>norm(a)===norm(b),L=parseLen(V.lung),T=tolDi(o),tm=Number(T?.meno||0),tp=Number(T?.piu||0);
+  return[['Lega',V.lega,o.lega,V.lega?eq(V.lega,o.lega):null],['Colata',V.colata,o.colata,V.colata?eq(V.colata,o.colata):null],
+    ['Profilo',V.prof,o.profilo,V.prof?eq(V.prof,o.profilo):null],
+    ['Lunghezza',L==null?'':L+' mm',`${fmtN(o.lunghezza)} mm (−${tm} / +${tp})`,L==null?null:L>=Number(o.lunghezza)-tm&&L<=Number(o.lunghezza)+tp]];
+}
+function vVerifica(){
+  const V=S.V;
+  if(!S.ordLoaded)return'<div class="card">Caricamento ordini…</div>';
+  let h='';
+  if(V.saved)h+=V.saved.queued?`<div class="msg warn fade">Nessuna rete: controllo dell'ODP ${esc(V.saved.odp)} salvato sul telefono, verrà inviato appena torna la connessione.</div>`
+    :`<div class="msg ok fade">Controllo salvato: ODP ${esc(V.saved.odp)} — ${V.saved.esito==='conforme'?'conforme':'NON conforme'}.${V.saved.punzRef?' Collegato alla punzonatura nel registro.':''}</div>`;
+  if(!V.sel){
+    const q=norm(V.q),hits=q.length<2?[]:[...S.ordini.values()].filter(x=>x.odp.toUpperCase().includes(q)||x.colata.includes(q)).slice(0,12);
+    h+=`<div class="card"><div class="step"><div class="num">1</div><h2>Ordine da controllare</h2></div>
+     <label for="vq">Cerca ODP</label><input id="vq" type="search" class="big" autocomplete="off" inputmode="decimal" value="${esc(V.q)}" placeholder="2026.2.…">
+     ${vImp()}<div class="hits">${hits.map(x=>`<button class="hit" data-vodp="${esc(x.odp)}"><b>${esc(x.odp)}</b><span>${esc(x.profilo)} · ${esc(fmtN(x.lunghezza))} mm · ${esc(x.lega)}</span></button>`).join('')}</div>
+     <p class="lbl">Oppure scatta una foto all'etichetta: l'app legge i dati da sola</p>${fotoBtns('vfoto')}
+     ${V.fotoUrl?`<img class="thumb" src="${esc(V.fotoUrl)}" alt="Foto etichetta">`:''}
+     ${V.leggendo?'<div class="msg info">Lettura etichetta in corso… (la prima volta può servire mezzo minuto)</div>':''}${V.lett?.err?`<div class="msg err">${esc(V.lett.err)}</div>`:''}</div>`;
+  }else{
+    const o=V.sel,prev=V.prev.filter(p=>!p.annullato),es=esitiVerifica(o),filled=es.every(x=>x[3]!=null),ok=filled&&es.every(x=>x[3]);
+    h+=`<div class="card"><div class="step"><div class="num done">1</div><h2>Ordine ${esc(o.odp)}</h2></div>
+     <div class="grid"><div class="kv"><span>Lega</span><b>${esc(o.lega)}</b></div><div class="kv"><span>Colata</span><b>${esc(o.colata)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div><div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pressa</span><b>${esc(o.pressa||'—')}</b></div><div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
+     ${prev.length?`<h3 style="margin-top:16px">Punzonature registrate</h3><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>Colata letta</th><th>Etichetta</th></tr></thead><tbody>${prev.map(p=>`<tr><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(nm(p.uid))}</td><td>${esc(p.colataLetta)}</td><td>${p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'✓ corrisponde':'con differenze'):'non letta'}</td></tr>`).join('')}</tbody></table>`
+       :'<div class="msg warn">Nessuna punzonatura registrata per questo ODP.</div>'}
+     <div class="row" style="margin-top:12px"><button class="ghost" id="vchg">Cambia ordine</button></div></div>
+    <div class="card"><div class="step"><div class="num ${filled?'done':''}">2</div><h2>Valori rilevati</h2></div>
+     ${V.fotoUrl?`<img class="thumb" src="${esc(V.fotoUrl)}" alt="Foto etichetta" style="max-width:100%;max-height:340px;margin-bottom:8px">`:''}
+     <p class="mute">Scrivi quello che leggi sulla barra o sull'etichetta. ${V.lett&&!V.lett.err?'Precompilati dalla foto: correggili se serve, la lunghezza è quella dell\'etichetta finché non scrivi quella misurata.':''}</p>
+     <div class="grid"><div><label for="vLega">Lega punzonata</label><input id="vLega" type="text" class="big" autocapitalize="characters" value="${esc(V.lega)}"></div>
+     <div><label for="vCol">Colata punzonata</label><input id="vCol" type="text" class="big" autocapitalize="characters" value="${esc(V.colata)}"></div>
+     <div><label for="vProf">Profilo</label><input id="vProf" type="text" class="big" autocapitalize="characters" value="${esc(V.prof)}"></div>
+     <div><label for="vLung">Lunghezza mis. (mm)</label><input id="vLung" type="text" class="big" inputmode="decimal" value="${esc(V.lung)}"></div></div>
+     ${tolDi(V.sel)?`<p class="mute">Tolleranza lunghezza (${esc(tolDi(V.sel).da)}): −${esc(tolDi(V.sel).meno)} / +${esc(tolDi(V.sel).piu)} mm.</p>`:`<div class="msg warn">${V.sel.pressa?'Nessuna tolleranza per la pressa '+esc(V.sel.pressa):'Pressa non nota per questo ordine (ricarica l\'export)'}: serve la misura esatta.</div>`}</div>
+    <div class="card"><div class="step"><div class="num">3</div><h2>Esito</h2></div>
+     <table><thead><tr><th>Campo</th><th>Rilevato</th><th>Atteso</th><th></th></tr></thead><tbody>${es.map(([n,a,b,r])=>`<tr><td>${n}</td><td>${esc(a||'—')}</td><td>${esc(b)}</td><td>${r==null?'':r?'✓':'<b style="color:var(--red)">✗</b>'}</td></tr>`).join('')}</tbody></table>
+     ${filled?(ok?'<div class="msg ok">✓ Conforme: tutti i valori corrispondono all\'ordine.</div>':`<div class="msg err">NON conforme: ${es.filter(x=>!x[3]).map(x=>x[0]).join(', ')}.</div>`):'<p class="mute">Compila tutti e quattro i valori per avere l\'esito.</p>'}
+     ${S.role!=='lettore'?`<div class="row" style="margin-top:14px"><button class="red" id="vsave" ${!filled||V.saving?'disabled':''}>${V.saving?'Salvataggio…':'Salva controllo'}</button><button class="ghost" id="vnew">Nuovo controllo</button></div>`:'<p class="mute">Con il tuo accesso in sola lettura il controllo si vede a schermo ma non viene salvato.</p><div class="row" style="margin-top:14px"><button class="ghost" id="vnew">Nuovo controllo</button></div>'}</div>`;
+  }
+  if(S.ctrl.length)h+=`<div class="card scroll"><div class="row" style="justify-content:space-between"><h2>Ultimi controlli</h2>${S.role==='admin'||S.role==='lettore'?'<a href="#registro" data-gotoctrl="1">Tutte nel registro</a>':''}</div><table class="stack" style="margin-top:10px"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Esito</th><th>Differenze</th></tr></thead><tbody>
+    ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(Object.entries(c.esiti||{}).filter(x=>!x[1]).map(x=>x[0]).join(', '))}</td></tr>`).join('')}</tbody></table></div>`;
+  return h;
+}
+async function vPick(odp,lett){
+  const o=S.ordini.get(odp);if(!o)return;
+  if(!lett&&S.V.ocrText)lett=lettFromOcr(S.V.ocrText,o);
+  Object.assign(S.V,{sel:o,prev:[],lett:lett||(S.V.lett?.err?null:S.V.lett),lega:'',colata:'',lung:'',prof:'',saved:null});
+  const L=S.V.lett;if(L&&!L.err){lett=L;S.V.lega=lett.lega||'';S.V.colata=lett.colata||'';S.V.prof=lett.profilo||'';S.V.lung=lett.lunghezza!=null?String(lett.lunghezza):''}
+  render();
+  try{const s=await S.db.collection('punzonature').where('odp','==',odp).get();S.V.prev=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.tsMs-a.tsMs);await loadNames(S.V.prev.map(p=>p.uid));render()}catch{}
+}
+async function vFoto(file){
+  if(S.V.fotoUrl)URL.revokeObjectURL(S.V.fotoUrl);S.V.file=file;S.V.fotoUrl=URL.createObjectURL(file);
+  S.V.leggendo=true;S.V.lett=null;S.V.saved=null;S.V.ocrText='';render();
+  const res=await leggiFoto(file);S.V.leggendo=false;S.V.ocrText=res.text||'';
+  const r=risolvi(res,S.V.sel);
+  if(r.err){S.V.lett={err:r.err};render();return}
+  vPick(r.o.odp,r.lett);
+}
+async function vSave(){
+  const V=S.V,o=V.sel;if(!o||V.saving)return;V.saving=true;render();
+  try{
+    const fotoId='',link=V.prev.find(p=>!p.annullato)?.id||null;
+    const es=esitiVerifica(o),rec={tsMs:Date.now(),uid:S.me.id,odp:o.odp,rilevato:{lega:norm(V.lega),colata:norm(V.colata),profilo:norm(V.prof),lunghezza:parseLen(V.lung)},
+      atteso:{lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza},tolleranza:tolDi(o)||{meno:0,piu:0,da:'esatta'},pressa:o.pressa||'',
+      esiti:Object.fromEntries(es.map(x=>[x[0],x[3]])),esito:es.every(x=>x[3])?'conforme':'non conforme',fotoId,daFoto:!!(V.lett&&!V.lett.err)};
+    rec.punzRef=link;
+    const it={kind:'ctrl',id:newId(),rec,blob:V.file&&S.assets?V.file:null,link};
+    const r=await salva(it);
+    if(V.fotoUrl)URL.revokeObjectURL(V.fotoUrl);Object.assign(V,{sel:null,prev:[],lett:null,lega:'',colata:'',lung:'',prof:'',q:'',file:null,fotoUrl:'',saved:{...rec,queued:r==='queued'}});
+  }catch(e){saveErr(e,'Controllo non salvato')}
+  V.saving=false;render();
+}
+
+function vFull(){
+  const o=S.sel;
+  return`<div class="fs"><div class="fsbar"><button class="ghost" id="indietro">← Indietro</button><span>ODP <b>${esc(o.odp)}</b></span></div>
+   <div class="fscodes"><div class="fscode"><p>LEGA <b>${esc(o.lega)}</b></p><svg id="bcL"></svg></div><div class="fscode"><p>COLATA <b>${esc(o.colata)}</b></p><svg id="bcC"></svg></div></div>
+   <button class="red fsdone" id="save" ${S.saving?'disabled':''}>${S.saving?'Salvataggio…':'✓ Punzonatura eseguita'}</button></div>`;
+}
+let wakeLock=null;
+async function enterFull(){
+  S.full=true;document.body.classList.add('full');render();window.scrollTo(0,0);
+  try{await document.documentElement.requestFullscreen?.()}catch{}
+  try{wakeLock=await navigator.wakeLock?.request('screen')}catch{}
+}
+function exitFull(){
+  S.full=false;document.body.classList.remove('full');
+  try{if(document.fullscreenElement)document.exitFullscreen()}catch{}
+  try{wakeLock?.release()}catch{}wakeLock=null;
+}
+const inAppAndroid=/Android/.test(navigator.userAgent)&&/\bwv\b|; wv\)/.test(navigator.userAgent);
+function fotoBtns(id){
+  return`${inAppAndroid?'<div class="msg warn">Se la fotocamera non si apre, apri questa pagina con Chrome.</div>':''}<div class="fbtn"><input id="${id}" type="file" accept="image/*" capture="environment" aria-label="Scatta foto"></div>`;
+}
+function fotoDa(k,f){if(k==='foto')fotoScelta(f,false);else if(k==='foto1')fotoScelta(f,true);else if(k==='vfoto')vFoto(f)}
+function drawCodes(){
+  const o=S.sel,l=$('#bcL'),c=$('#bcC');if(!o||!l||!c||!window.JsBarcode)return;
+  const opt={format:'CODE128',width:3,height:120,margin:18,displayValue:false,background:'#ffffff',lineColor:'#000000'};
+  for(const[el,val]of[[l,o.lega],[c,o.colata]]){JsBarcode(el,val,opt);el.setAttribute('preserveAspectRatio','none');const w=el.getAttribute('width'),h=el.getAttribute('height');el.setAttribute('viewBox',`0 0 ${parseFloat(w)} ${parseFloat(h)}`);el.removeAttribute('width');el.removeAttribute('height')}
+}
+
+const ANN_MS=5*60e3;
+function canAnn(p){return!!p&&!p.annullato&&(S.role==='admin'||(S.role==='operatore'&&p.uid===S.me.id&&Date.now()-p.tsMs<ANN_MS))}
+function nm(id){return id===S.me.id&&S.me.name?S.me.name:(S.names[id]||'Utente')}
+
+function filtered(mine){
+  const q=norm(S.rq),f=S.rFrom?new Date(S.rFrom).getTime():0,t=S.rTo?new Date(S.rTo).getTime()+864e5:Infinity;
+  return S.punz.filter(p=>(!mine||p.uid===S.me.id)&&(!S.rUser||p.uid===S.rUser)&&p.tsMs>=f&&p.tsMs<t&&(!q||[p.odp,p.lega,p.colata,p.profilo].some(x=>String(x).toUpperCase().includes(q))));
+}
+function filteredCtrl(){
+  const q=norm(S.rq),f=S.rFrom?new Date(S.rFrom).getTime():0,t=S.rTo?new Date(S.rTo).getTime()+864e5:Infinity;
+  return S.ctrl.filter(c=>(!S.rUser||c.uid===S.rUser)&&c.tsMs>=f&&c.tsMs<t&&(!q||[c.odp,c.atteso?.lega,c.atteso?.colata,c.atteso?.profilo,c.rilevato?.colata].some(x=>String(x??'').toUpperCase().includes(q))));
+}
+const diffs=c=>Object.entries(c.esiti||{}).filter(x=>!x[1]).map(x=>x[0]).join(', ');
+function vRegistro(mine){
+  if(!mine&&S.rTab==='ctrl')return vRegCtrl();
+  const rows=filtered(mine),users=[...new Set(S.punz.map(p=>p.uid))];
+  return`${mine?'':tabsReg()}<div class="card"><h2>${mine?'Le mie punzonature':'Registro punzonature'}</h2>
+   <div class="grid" style="margin-top:6px"><div class="full"><label for="rq">Cerca ODP, lega, colata, profilo</label><input id="rq" type="search" value="${esc(S.rq)}"></div>
+   <div><label for="rFrom">Dal</label><input id="rFrom" type="date" value="${esc(S.rFrom)}"></div><div><label for="rTo">Al</label><input id="rTo" type="date" value="${esc(S.rTo)}"></div>
+   ${mine?'':`<div class="full"><label for="rUser">Operatore</label><select id="rUser"><option value="">Tutti</option>${users.map(u=>`<option value="${esc(u)}" ${u===S.rUser?'selected':''}>${esc(nm(u))}</option>`).join('')}</select></div>`}</div>
+   <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} punzonature${S.punz.length>=S.punzLimit?` (ultime ${S.punzLimit})`:''}</span>
+   <span class="row">${S.punz.length>=S.punzLimit?'<button class="ghost" id="more">Carica più vecchie</button>':''}${S.downloads&&!mine?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
+   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>ODP</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lungh.</th><th>Esito</th><th>Controllo</th><th>Foto</th>${S.role==='admin'||mine?'<th></th>':''}</tr></thead><tbody>
+   ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(nm(p.uid))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}</td>
+   <td class="keep">${p.annullato?`Annullata: ${esc(p.annullato.motivo)}`:(p.ripetuta?'OK (ripetuta)':'OK')+(p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?' · etichetta ✓':' · etichetta con differenze'):'')}</td><td class="keep">${p.verifica?(p.verifica.esito==='conforme'?'✓ verificata':'<b style="color:var(--red)">✗ non conforme</b>')+`<br><span class="mute">${esc(fmtT(p.verifica.tsMs))}</span>`:'—'}</td><td class="keep">${fotoA(p.fotoId)}</td>
+   ${S.role==='admin'||mine?`<td class="keep">${canAnn(p)?`<button class="ghost" data-ann="${esc(p.id)}" style="min-height:36px;padding:4px 10px">Annulla</button>`:''}</td>`:''}</tr>`).join('')}
+   </tbody></table>${rows.length?'':'<p class="mute">Nessuna punzonatura.</p>'}</div>`;
+}
+
+function tabsReg(){return`<div class="row" style="margin-bottom:14px" role="tablist"><button role="tab" class="${S.rTab==='punz'?'':'ghost'}" data-rtab="punz">Punzonature (${S.punz.length})</button><button role="tab" class="${S.rTab==='ctrl'?'':'ghost'}" data-rtab="ctrl">Verifiche (${S.ctrl.length})</button></div>`}
+function vRegCtrl(){
+  const rows=filteredCtrl(),users=[...new Set(S.ctrl.map(c=>c.uid))],nc=rows.filter(c=>c.esito!=='conforme').length;
+  return`${tabsReg()}<div class="card"><h2>Registro verifiche</h2>
+   <div class="grid" style="margin-top:6px"><div class="full"><label for="rq">Cerca ODP, lega, colata, profilo</label><input id="rq" type="search" value="${esc(S.rq)}"></div>
+   <div><label for="rFrom">Dal</label><input id="rFrom" type="date" value="${esc(S.rFrom)}"></div><div><label for="rTo">Al</label><input id="rTo" type="date" value="${esc(S.rTo)}"></div>
+   <div class="full"><label for="rUser">Controllato da</label><select id="rUser"><option value="">Tutti</option>${users.map(u=>`<option value="${esc(u)}" ${u===S.rUser?'selected':''}>${esc(nm(u))}</option>`).join('')}</select></div></div>
+   <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} verifiche, ${nc} non conformi${S.ctrl.length>=S.ctrlLimit?` (ultime ${S.ctrlLimit})`:''}</span>
+   <span class="row">${S.ctrl.length>=S.ctrlLimit?'<button class="ghost" id="moreC">Carica più vecchie</button>':''}${S.downloads?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
+   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Pressa</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lunghezza</th><th>Esito</th><th>Foto</th></tr></thead><tbody>
+   ${rows.map(c=>{const r=c.rilevato||{},a=c.atteso||{},e=c.esiti||{},cell=(k,rv,av)=>`${esc(rv??'—')}${e[k]===false?` <b style="color:var(--red)">✗</b><br><span class="mute">atteso ${esc(av)}</span>`:''}`;
+     return`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(nm(c.uid))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${esc(c.pressa||'')}</td>
+     <td>${cell('Lega',r.lega,a.lega)}</td><td>${cell('Colata',r.colata,a.colata)}</td><td>${cell('Profilo',r.profilo,a.profilo)}</td>
+     <td class="t">${cell('Lunghezza',r.lunghezza!=null?fmtN(r.lunghezza)+' mm':null,`${fmtN(a.lunghezza)} (−${c.tolleranza?.meno??0}/+${c.tolleranza?.piu??0})`)}</td>
+     <td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}${c.daFoto?'<br><span class="mute">da foto</span>':''}</td>
+     <td>${fotoA(c.fotoId)}</td></tr>`}).join('')}
+   </tbody></table>${rows.length?'':'<p class="mute">Nessuna verifica.</p>'}</div>`;
+}
+
+function vImp(full){
+  if(!S.lastImp?.tsMs)return'';
+  const old=Date.now()-S.lastImp.tsMs>2*864e5;
+  return old?`<div class="msg warn">Ordini aggiornati al ${esc(fmtT(S.lastImp.tsMs))}, più di 2 giorni fa. ${S.role==='admin'?'Ricarica l\'export dal gestionale.':'Se un ODP manca, avvisa il responsabile.'}</div>`
+    :`<p class="mute" style="margin:${full?'0 0 10px':'10px 0 0'}">Ordini aggiornati al ${esc(fmtT(S.lastImp.tsMs))}.</p>`;
+}
+function vOrdini(){
+  const q=norm(S.oq),list=[...S.ordini.values()].filter(o=>!q||o.odp.includes(q)||o.colata.includes(q)||String(o.profilo).toUpperCase().includes(q)).sort((a,b)=>b.odp.localeCompare(a.odp)).slice(0,200);
+  const nCol=new Set([...S.ordini.values()].map(o=>o.colata)).size,im=S.imp;
+  return`<div class="card"><h2>Carica export dal gestionale</h2>${vImp(true)}<p class="mute">Scegli il file Excel esportato. Vengono letti ODP, Lotto (la colata è la parte centrale, es. 526027A3), Des. lega, Profilo, Lunghezza, Cliente e Qta pezzi. I lotti nel vecchio formato vengono ignorati.</p>
+   <input type="file" id="xin" accept=".xlsx,.xls">
+   ${im?`<div class="fade">${im.err?`<div class="msg err">${esc(im.err)}</div>`:`
+    <div class="stats"><div><b>${im.nuovi}</b>nuovi</div><div><b>${im.agg}</b>aggiornati</div><div><b>${im.uguali}</b>invariati</div><div><b>${im.scartati}</b>scartati</div><div><b>${im.anom.length}</b>anomalie</div></div>
+    ${im.anom.length?`<div class="msg err"><b>Anomalie da controllare</b><ul>${im.anom.slice(0,30).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>`:'<div class="msg ok">✓ Nessuna anomalia: ogni colata ha una sola lega.</div>'}
+    ${im.note.length?`<details class="msg info"><summary>${im.note.length} note (ODP figli o billette riassegnate)</summary><ul>${im.note.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:''}
+    <label class="check"><input type="checkbox" id="prune" ${im.prune?'checked':''}> Rimuovi gli ${im.daRimuovere} ordini che non sono più nell'export (le punzonature già registrate restano nel registro)</label>
+    <div class="row"><button class="red" id="doImp" ${S.impBusy||(!im.nuovi&&!im.agg&&!(im.prune&&im.daRimuovere))?'disabled':''}>${S.impBusy?'Caricamento…':'Carica nel database'}</button></div>
+    ${S.impBusy?`<div class="bar"><i style="width:${S.impProg}%"></i></div>`:''}`}</div>`:''}</div>
+  <div class="card"><h2>Impostazioni</h2>
+   <label class="check"><input type="checkbox" id="cfgFoto" ${S.cfg.fotoObbligatoria?'checked':''}> Foto dell'etichetta obbligatoria prima della punzonatura</label>
+   <h3 style="margin-top:18px">Tolleranza sulla lunghezza per pressa (per la verifica)</h3>
+   <table style="margin-top:8px"><thead><tr><th>Pressa</th><th>In meno (mm)</th><th>In più (mm)</th></tr></thead><tbody>
+   ${[...new Set([...Object.keys(tolPresse()),...[...S.ordini.values()].map(o=>o.pressa).filter(Boolean)])].sort().map(pr=>{const t=tolPresse()[pr]||{};return`<tr><td><b>${esc(pr)}</b></td>
+     <td><input type="text" inputmode="decimal" id="tm_${esc(pr)}" data-tp="${esc(pr)}" data-k="meno" value="${esc(t.meno??'')}" aria-label="Tolleranza in meno pressa ${esc(pr)}"></td>
+     <td><input type="text" inputmode="decimal" id="tp_${esc(pr)}" data-tp="${esc(pr)}" data-k="piu" value="${esc(t.piu??'')}" aria-label="Tolleranza in più pressa ${esc(pr)}"></td></tr>`}).join('')}</tbody></table>
+   <p class="mute">Per ordini senza pressa riconosciuta si usa la tolleranza generica qui sotto (lasciala vuota per richiedere la misura esatta).</p>
+   <div class="grid"><div><label for="tolMeno">Generica in meno (mm)</label><input id="tolMeno" type="text" inputmode="decimal" value="${esc(S.cfg.tolMeno??'')}" placeholder="es. 0"></div>
+   <div><label for="tolPiu">Generica in più (mm)</label><input id="tolPiu" type="text" inputmode="decimal" value="${esc(S.cfg.tolPiu??'')}" placeholder="es. 10"></div></div>
+   <h3 style="margin-top:18px">Colate compatibili con altre leghe</h3><p class="mute">Per i casi rari in cui una colata è valida anche per una lega diversa.</p>
+   <div class="grid"><div><label for="cpC">Colata</label><input id="cpC" type="text" autocapitalize="characters"></div><div><label for="cpL">Lega ammessa</label><input id="cpL" type="text" autocapitalize="characters"></div><div style="align-self:end"><button id="cpAdd">Aggiungi</button></div></div>
+   ${S.compat.length?`<table style="margin-top:12px"><tbody>${S.compat.map((c,i)=>`<tr><td>${esc(c.colata)}</td><td>${esc(c.lega)}</td><td class="n"><button class="ghost" data-cpdel="${i}" style="min-height:36px;padding:4px 10px">Rimuovi</button></td></tr>`).join('')}</tbody></table>`:''}</div>
+  ${vUtenti()}
+  <div class="card"><div class="row" style="justify-content:space-between"><h2>Ordini nel database</h2><span class="mute">${S.ordini.size} ordini · ${nCol} colate</span></div>
+   <label for="oq">Cerca</label><input id="oq" type="search" value="${esc(S.oq)}">
+   <div class="scroll" style="margin-top:12px"><table class="stack"><thead><tr><th>ODP</th><th>Colata</th><th>Lega</th><th>Profilo</th><th>Lungh.</th><th>Pezzi</th><th>Cliente</th></tr></thead><tbody>
+   ${list.map(o=>`<tr><td class="t"><b>${esc(o.odp)}</b></td><td>${esc(o.colata)}</td><td>${esc(o.lega)}</td><td>${esc(o.profilo)}</td><td class="n">${esc(fmtN(o.lunghezza))}</td><td class="n">${esc(fmtN(o.pezzi))}</td><td>${esc(o.cliente)}</td></tr>`).join('')}</tbody></table></div>
+   ${S.ordini.size>200&&!q?'<p class="mute">Mostrati i primi 200: usa la ricerca.</p>':''}</div>`;
+}
+
+/* ---------- import excel ---------- */
+function parseExcel(buf){
+  const wb=XLSX.read(buf,{type:'array',cellDates:true}),ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+  if(!rows.length)return{err:'Il file è vuoto.'};
+  const keys=Object.keys(rows[0]),find=n=>keys.find(k=>k.trim().toLowerCase()===n);
+  const K={odp:find('odp'),lotto:find('lotto'),lega:find('des. lega'),cod:find('cod. lega'),prof:find('profilo'),len:find('lunghezza'),cli:find('rag. soc. cliente'),pz:find('qta pezzi'),pr:find('cod. pressa')};
+  const miss=['odp','lotto','lega'].filter(k=>!K[k]);
+  if(miss.length)return{err:'Colonne mancanti nel file: '+miss.map(k=>({odp:'ODP',lotto:'Lotto',lega:'Des. lega'})[k]).join(', ')};
+  const out=new Map(),anom=[],note=[];let scartati=0;
+  for(const r of rows){
+    const odp=String(r[K.odp]).trim(),lotto=String(r[K.lotto]).trim(),parts=lotto.split('-');
+    if(!odp)continue;
+    if(parts.length<3){scartati++;continue}
+    const colata=norm(parts[1]),lega=norm(r[K.lega]);
+    if(!/^[0-9A-Z]{5,12}$/.test(colata)){anom.push(`ODP ${odp}: colata "${colata}" in formato non previsto (lotto ${lotto})`);continue}
+    if(!lega){anom.push(`ODP ${odp}: lega mancante`);continue}
+    if(!/^[0-9A-Za-z._:@+~-]+$/.test(odp)){anom.push(`ODP ${odp}: formato non valido`);continue}
+    if(out.has(odp))anom.push(`ODP ${odp} presente più volte nel file: tenuta l'ultima riga`);
+    let nota='';const ln=(parts[0].split('.')[1]||''),on=(odp.split('.')[2]||'');
+    if(ln&&on&&ln!==on){nota=`Billette riassegnate: il lotto viene dall'ODP ${parts[0]}.`;note.push(`ODP ${odp}: lotto ${lotto}`)}
+    out.set(odp,{odp,colata,lega,codLega:norm(K.cod?r[K.cod]:''),profilo:String(K.prof?r[K.prof]:'').trim(),lunghezza:Number(K.len?r[K.len]:'')||'',
+      pezzi:Number(K.pz?r[K.pz]:'')||'',cliente:String(K.cli?r[K.cli]:'').trim(),pressa:(String(K.pr?r[K.pr]:'').match(/P(\d{4})/i)||[])[1]||'',lotto,nota});
+  }
+  // colata → leghe, su database + file
+  const merged=new Map([...S.ordini,...out]),m=new Map();
+  for(const o of merged.values()){if(!m.has(o.colata))m.set(o.colata,new Set());m.get(o.colata).add(o.lega)}
+  for(const[c,s]of m)if(s.size>1){const l=[...s];if(!l.every(x=>l.every(y=>x===y||compatOk(c,x)||compatOk(c,y))))anom.push(`Colata ${c} associata a più leghe: ${l.join(', ')}`)}
+  let nuovi=0,agg=0,uguali=0;const scrivi=[];
+  for(const o of out.values()){const e=S.ordini.get(o.odp);
+    if(!e){nuovi++;scrivi.push(o)}else if(JSON.stringify(e)!==JSON.stringify({...e,...o})){agg++;scrivi.push(o);if(e.colata!==o.colata)anom.push(`ODP ${o.odp}: colata cambiata da ${e.colata} a ${o.colata}`)}else uguali++}
+  const rimuovi=[...S.ordini.keys()].filter(k=>!out.has(k));
+  return{nuovi,agg,uguali,scartati,anom,note,scrivi,rimuovi,daRimuovere:rimuovi.length,prune:false};
+}
+async function runImport(){
+  const im=S.imp;if(!im||S.impBusy)return;S.impBusy=true;S.impProg=0;render();
+  const jobs=[...im.scrivi.map(o=>()=>S.db.doc('ordini/'+o.odp).set({...o,aggiornato:Date.now()})),...(im.prune?im.rimuovi.map(k=>()=>S.db.doc('ordini/'+k).delete()):[])];
+  let i=0,done=0,fail=0;
+  const worker=async()=>{while(i<jobs.length){const j=jobs[i++];try{await j()}catch(e){if(e?.code==='unavailable'){await new Promise(r=>setTimeout(r,800));try{await j()}catch{fail++}}else fail++}
+    done++;S.impProg=Math.round(done/jobs.length*100);const b=document.querySelector('.bar i');if(b)b.style.width=S.impProg+'%'}};
+  await Promise.all([worker(),worker(),worker(),worker()]);
+  if(done>fail)try{await S.db.doc('config/import').set({tsMs:Date.now(),uid:S.me.id,ordini:S.ordini.size})}catch(e){console.warn(e)}
+  S.impBusy=false;S.imp=fail?{err:`${fail} scritture non riuscite su ${jobs.length}. Riprova a caricare il file.`}:null;
+  toast(fail?'':`Caricati ${jobs.length} aggiornamenti.`);render();
+}
+
+/* ---------- salvataggio punzonatura ---------- */
+async function resizePhoto(file){
+  const img=await createImageBitmap(file),k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+  c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return new Promise(r=>c.toBlob(r,'image/jpeg',.82));
+}
+/* ---------- salvataggi anche senza rete ---------- */
+const OB_KEY='punz_outbox_v1';
+const newId=()=>{try{return crypto.randomUUID()}catch{return Date.now().toString(36)+Math.random().toString(36).slice(2,10)}};
+function obLoad(){try{S.outbox=JSON.parse(localStorage.getItem(OB_KEY)||'[]')}catch{S.outbox=[]}}
+function obSave(){try{localStorage.setItem(OB_KEY,JSON.stringify(S.outbox.map(({blob,...x})=>x)))}catch{}}
+const withTimeout=(pr,ms)=>Promise.race([pr,new Promise((_,r)=>setTimeout(()=>r({code:'timeout'}),ms))]);
+const isNet=e=>!navigator.onLine||['unavailable','timeout'].includes(e?.code);
+async function writeItem(it){
+  if(it.blob&&!it.rec.fotoId&&S.assets){
+    try{const a=await withTimeout(S.assets.upload(await resizePhoto(it.blob)),30000);it.rec.fotoId=a.id}
+    catch(e){if(isNet(e))throw e;console.warn(e);toast('Foto non salvata: il record viene registrato senza foto.',true)}
+    it.blob=null;
+  }
+  await withTimeout(S.db.collection(it.kind==='punz'?'punzonature':'controlli').doc(it.id).set(it.rec),15000);
+  if(it.kind==='ctrl'&&it.link){try{await withTimeout(S.db.doc('punzonature/'+it.link).update({verifica:{ctrlId:it.id,esito:it.rec.esito,tsMs:it.rec.tsMs,uid:it.rec.uid}}),15000)}catch(e){console.warn(e)}}
+}
+async function salva(it){
+  try{await writeItem(it);return'ok'}
+  catch(e){if(isNet(e)){S.outbox.push(it);obSave();return'queued'}throw e}
+}
+let flushing=false;
+async function flush(){
+  if(flushing||!S.outbox.length||!navigator.onLine)return;flushing=true;let sent=0;
+  for(const it of [...S.outbox]){
+    try{await writeItem(it);S.outbox=S.outbox.filter(x=>x!==it);obSave();sent++}
+    catch(e){if(isNet(e))break;S.outbox=S.outbox.filter(x=>x!==it);obSave();saveErr(e,'Salvataggio in attesa non riuscito')}
+  }
+  flushing=false;if(sent)toast(`Inviati ${sent} salvataggi rimasti in attesa.`);render();
+}
+window.addEventListener('online',()=>flush());
+setInterval(()=>{if(S.outbox.length)flush()},30000);
+
+async function save(){
+  const o=S.sel;if(!o||S.saving)return;S.saving=true;render();
+  try{
+    const fotoId='';
+    const now=Date.now(),rec={tsMs:now,ts:new Date(now).toISOString(),uid:S.me.id,odp:o.odp,lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza,
+      cliente:o.cliente,colataLetta:norm(S.colataLetta),verificaProfilo:true,ripetuta:S.prev.some(p=>!p.annullato),fotoId,esito:'punzonato e verificato',letturaEtichetta:S.lett&&!S.lett.err?{...S.lett,esiti:Object.fromEntries(confronto(o,S.lett).map(x=>[x[0],x[3]]))}:null};
+    const it={kind:'punz',id:newId(),rec,blob:S.foto&&S.assets?S.foto:null};
+    const r=await salva(it);
+    S.done={...rec,id:it.id,queued:r==='queued'};exitFull();resetSel();
+  }catch(e){saveErr(e,'Punzonatura non salvata')}
+  S.saving=false;render();
+}
+function resetSel(keepFoto){S.sel=null;S.prev=[];S.colataLetta='';S.chkProf=false;S.chkAgain=false;S.q='';
+  if(keepFoto){if(S.lett?.err)S.lett=null;return}S.lett=null;S.ocrText='';S.foto=null;if(S.fotoUrl)URL.revokeObjectURL(S.fotoUrl);S.fotoUrl=''}
+async function pick(odp){
+  const o=S.ordini.get(odp);if(!o)return;const keepL=S.lett;resetSel(!S.sel);if(keepL&&!keepL.err)S.lett=keepL;S.sel=o;
+  if(!S.lett&&S.ocrText){S.lett=lettFromOcr(S.ocrText,o);if(S.lett.colata&&!S.colataLetta)S.colataLetta=S.lett.colata}render();
+  try{const s=await S.db.collection('punzonature').where('odp','==',odp).get();S.prev=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>b.tsMs-a.tsMs);await loadNames(S.prev.map(p=>p.uid));render()}catch{}
+}
+
+/* ---------- utility ---------- */
+function saveErr(e,what){
+  const c=e?.code;
+  if(c==='invalid_argument'||c==='not_granted'||c==='revoked'){S.noWrite=true;showDiag();toast(what+': il tuo accesso non permette di salvare.',true);render()}
+  else toast(what+': '+(c==='quota_exceeded'?'database pieno, avvisa il responsabile.':'riprova tra poco.'),true);
+}
+function showDiag(){const d=$('#diag');if(d)d.classList.remove('hidden')}
+let tt;function toast(t,bad){if(!t)return;let el=$('#toast');if(!el){el=document.createElement('div');el.id='toast';el.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));margin:0 auto;max-width:480px;padding:12px 16px;border-radius:8px;font-weight:600;z-index:9;box-shadow:0 6px 20px #0005;cursor:pointer';el.onclick=()=>el.style.display='none';document.body.append(el)}
+  el.textContent=t;el.style.background=bad?'#e8251a':'#0d0f11';el.style.color='#fff';el.style.display='block';clearTimeout(tt);tt=setTimeout(()=>el.style.display='none',2500)}
+function ask(title,text,withInput){return new Promise(res=>{const d=$('#dlg');$('#dlgT').textContent=title;$('#dlgP').textContent=text;
+  $('#dlgI').value='';$('#dlgI').classList.toggle('hidden',!withInput);$('#dlgL').classList.toggle('hidden',!withInput);
+  const done=v=>{d.close();$('#dlgOk').onclick=$('#dlgNo').onclick=null;res(v)};$('#dlgOk').onclick=()=>{if(withInput&&!$('#dlgI').value.trim())return;done(withInput?$('#dlgI').value.trim():true)};$('#dlgNo').onclick=()=>done(null);d.showModal()})}
+async function loadNames(ids){
+  if(!S.user?.profiles)return;const need=[...new Set(ids)].filter(i=>i&&!(i in S.names));if(!need.length)return;
+  try{const ps=await S.user.profiles(need);for(const i of need)S.names[i]=ps?.[i]?.name||'Utente'}catch{}
+}
+async function exportXls(){
+  const rows=filtered(false).map(p=>({'Data e ora':fmtT(p.tsMs),Operatore:nm(p.uid),ODP:p.odp,Lega:p.lega,Colata:p.colata,'Colata letta':p.colataLetta,Profilo:p.profilo,Lunghezza:p.lunghezza,Cliente:p.cliente,
+    Esito:p.annullato?'Annullata: '+p.annullato.motivo:p.esito,Ripetuta:p.ripetuta?'Sì':'No',Controllo:p.verifica?(p.verifica.esito==='conforme'?'Verificata':'Non conforme')+' il '+fmtT(p.verifica.tsMs):'','Etichetta letta':p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'Tutto corrisponde':'Differenze: '+Object.entries(p.letturaEtichetta.esiti||{}).filter(x=>x[1]===false).map(x=>x[0]).join(', ')):'',Foto:p.fotoId?'Sì':'No'}));
+  const cr=filteredCtrl().map(c=>({'Data e ora':fmtT(c.tsMs),'Controllato da':nm(c.uid),ODP:c.odp,Pressa:c.pressa||'',
+    'Lega rilevata':c.rilevato?.lega,'Lega attesa':c.atteso?.lega,'Colata rilevata':c.rilevato?.colata,'Colata attesa':c.atteso?.colata,
+    'Profilo rilevato':c.rilevato?.profilo,'Profilo atteso':c.atteso?.profilo,'Lunghezza misurata':c.rilevato?.lunghezza,'Lunghezza ordine':c.atteso?.lunghezza,
+    'Toll. meno':c.tolleranza?.meno,'Toll. più':c.tolleranza?.piu,Esito:c.esito,Differenze:diffs(c),'Da foto':c.daFoto?'Sì':'No',Foto:c.fotoId?'Sì':'No'}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{Nota:'Nessuna punzonatura nel filtro'}]),'Punzonature');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cr.length?cr:[{Nota:'Nessuna verifica nel filtro'}]),'Verifiche');
+  const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+  try{await S.downloads.save({filename:`registro-${new Date().toISOString().slice(0,10)}.xlsx`,data:buf})}catch(e){if(e?.code!=='declined')toast('Esportazione non riuscita.',true)}
+}
+
+/* ---------- eventi ---------- */
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.id==='q'){S.q=t.value.replace(/,/g,'.');render()}
+  else if(t.id==='col'){S.colataLetta=t.value;render()}
+  else if(t.id==='rq'||t.id==='oq'){S[t.id]=t.value;render()}
+  else if(t.id==='vq'){S.V.q=t.value.replace(/,/g,'.');render()}
+  else if(['vLega','vCol','vProf','vLung'].includes(t.id)){S.V[{vLega:'lega',vCol:'colata',vProf:'prof',vLung:'lung'}[t.id]]=t.value;render()}
+});
+document.addEventListener('change',async e=>{const t=e.target;
+  if(t.id==='chkProf'){S.chkProf=t.checked;render()}
+  else if(t.id==='chkAgain'){S.chkAgain=t.checked;render()}
+  else if(t.id==='rFrom'||t.id==='rTo'||t.id==='rUser'){S[t.id]=t.value;render()}
+  else if(t.id==='prune'&&S.imp){S.imp.prune=t.checked;render()}
+  else if(/^(foto|foto1|vfoto)$/.test(t.id)&&t.files[0]){const f=t.files[0];t.value='';fotoDa(t.id,f)}
+  else if(t.dataset.tp){const n=parseLen(t.value);if(n==null||n<0){toast('Valore non valido.',true);return}
+    const tp={...tolPresse()};tp[t.dataset.tp]={...(tp[t.dataset.tp]||{meno:0,piu:0}),[t.dataset.k]:n};
+    try{await S.db.doc('config/impostazioni').set({...S.cfg,tolPresse:tp})}catch{toast('Impostazione non salvata.',true)}}
+  else if(t.id==='tolMeno'||t.id==='tolPiu'){const n=parseLen(t.value);if(n==null||n<0){toast('Valore non valido.',true);return}
+    try{await S.db.doc('config/impostazioni').set({...S.cfg,[t.id]:n})}catch{toast('Impostazione non salvata.',true)}}
+  else if(t.id==='xin'&&t.files[0]){try{S.imp=parseExcel(await t.files[0].arrayBuffer())}catch{S.imp={err:'File non leggibile: serve l\'export .xlsx del gestionale.'}}render()}
+  else if(t.id==='cfgFoto'){try{await S.db.doc('config/impostazioni').set({...S.cfg,fotoObbligatoria:t.checked})}catch{toast('Impostazione non salvata.',true)}}
+});
+document.addEventListener('click',async e=>{if(e.target.closest('[data-gotoctrl]'))S.rTab='ctrl';const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.odp)pick(b.dataset.odp);
+  else if(b.dataset.vodp)vPick(b.dataset.vodp);
+  else if(b.id==='vchg'||b.id==='vnew'){if(S.V.fotoUrl)URL.revokeObjectURL(S.V.fotoUrl);Object.assign(S.V,{sel:null,prev:[],lett:null,lega:'',colata:'',lung:'',prof:'',file:null,fotoUrl:'',ocrText:'',saved:b.id==='vnew'?null:S.V.saved});render()}
+  else if(b.id==='vsave')vSave();
+  else if(b.id==='chg'){resetSel();render()}
+  else if(b.id==='again'){S.done=null;render();$('#q')?.focus()}
+  else if(b.id==='save')save();
+  else if(b.id==='logout')logout();
+  else if(b.id==='pinBtn')cambiaPin();
+  else if(b.id==='avanti')enterFull();
+  else if(b.id==='indietro'){exitFull();render()}
+  else if(b.id==='doImp')runImport();
+  else if(b.id==='xls')exportXls();
+  else if(b.id==='more'){S.punzLimit+=500;subPunz()}
+  else if(b.dataset.rtab){S.rTab=b.dataset.rtab;S.rUser='';render()}
+  else if(b.id==='moreC'){S.ctrlLimit+=500;subCtrl()}
+  else if(b.id==='cpAdd'){const c=norm($('#cpC').value),l=norm($('#cpL').value);if(!c||!l)return;
+    try{await S.db.doc('config/compat').set({coppie:[...S.compat.filter(x=>!(x.colata===c&&x.lega===l)),{colata:c,lega:l}]})}catch{toast('Non salvato.',true)}}
+  else if(b.dataset.cpdel){const i=+b.dataset.cpdel;try{await S.db.doc('config/compat').set({coppie:S.compat.filter((_,j)=>j!==i)})}catch{toast('Non salvato.',true)}}
+  else if(b.dataset.ann){const p=S.punz.find(x=>x.id===b.dataset.ann)||(S.done?.id===b.dataset.ann?S.done:null);if(!p)return;
+    if(!canAnn(p)){toast('Sono passati più di 5 minuti: chiedi al responsabile di annullarla.',true);render();return}
+    const m=await ask('Annullare questa punzonatura?',`ODP ${p.odp} del ${fmtT(p.tsMs)}. Il record resta nel registro, segnato come annullato.`,true);
+    if(m)try{const a={motivo:m,uid:S.me.id,tsMs:Date.now()};await S.db.doc('punzonature/'+p.id).update({annullato:a});if(S.done?.id===p.id)S.done={...S.done,annullato:a};toast('Punzonatura annullata.');render()}catch(e){saveErr(e,'Annullamento non salvato')}}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='q'){const h=document.querySelector('[data-odp]');if(h)pick(h.dataset.odp)}
+  if(e.key==='Enter'&&e.target.id==='vq'){const h=document.querySelector('[data-vodp]');if(h)vPick(h.dataset.vodp)}});
+window.addEventListener('hashchange',render);
+
+/* ---------- sottoscrizioni ---------- */
+let unP,unC;
+function subCtrl(){
+  unC?.();unC=S.db.collection('controlli').orderBy('tsMs','desc').limit(S.ctrlLimit).onSnapshot(async s=>{S.ctrl=s.docs.map(d=>({id:d.id,...d.data()}));await loadNames(S.ctrl.map(c=>c.uid));render()},()=>{});
+}
+function subPunz(){
+  unP?.();unP=S.db.collection('punzonature').orderBy('tsMs','desc').limit(S.punzLimit).onSnapshot(async s=>{
+    S.punz=s.docs.map(d=>({id:d.id,...d.data()}));await loadNames(S.punz.map(p=>p.uid).concat(S.punz.map(p=>p.annullato?.uid)));render()},()=>toast('Registro non raggiungibile.',true));
+}
+/* =====================================================================
+   Collegamento a Supabase (database, login con PIN, foto)
+   ===================================================================== */
+const CFG=window.PZ_CONFIG||{};
+let sb=null;
+const APPEND_ONLY=new Set(['punzonature','controlli']);
+function dbErr(e){
+  if(!e)return null;const m=String(e.message||e);
+  if(!navigator.onLine||/fetch|network|load failed|timeout|offline/i.test(m))return{code:'unavailable',message:m};
+  if(['42501','P0001','23514','PGRST301'].includes(e.code)||/row-level security|permission denied|non si può|non consentito|già annullata/i.test(m))return{code:'invalid_argument',message:m};
+  return{code:e.code||'unknown',message:m};
+}
+const snapDoc=(id,d)=>({id,exists:!!d,data:()=>d||undefined,metadata:{fromCache:false}});
+function cacheGet(k){try{const v=localStorage.getItem('pzc:'+k);return v?JSON.parse(v):null}catch{return null}}
+function cacheSet(k,v){try{localStorage.setItem('pzc:'+k,JSON.stringify(v))}catch{}}
+function deepMerge(a,b){const o={...a};for(const k of Object.keys(b)){const x=b[k],y=a?.[k];o[k]=x&&typeof x==='object'&&!Array.isArray(x)&&y&&typeof y==='object'&&!Array.isArray(y)?deepMerge(y,x):x}return o}
+const subs=new Set();let refT;
+function refreshSoon(){clearTimeout(refT);refT=setTimeout(()=>{for(const s of subs)s.run()},250)}
+setInterval(()=>{if(document.visibilityState==='visible')for(const s of subs)s.run()},20000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshSoon()});
+window.addEventListener('online',()=>refreshSoon());
+function sbQuery(t,f=[],ord=null,lim=null){
+  const key=JSON.stringify([t,f,ord,lim]),cacheable=t==='ordini'||t==='config';
+  async function run(){
+    let q=sb.from(t).select('id,data');
+    for(const[fl,,v]of f)q=q.eq('data->>'+fl,String(v));
+    if(ord)q=q.order('data->'+ord[0],{ascending:ord[1]!=='desc'});
+    q=lim?q.limit(lim):q.range(0,9999);
+    const{data,error}=await q;if(error)throw dbErr(error);
+    const rows=data.map(r=>[r.id,r.data]);if(cacheable)cacheSet(key,rows);return rows;
+  }
+  const toSnap=rows=>{const docs=rows.map(([id,d])=>snapDoc(id,d));return{docs,size:docs.length,empty:!docs.length,metadata:{fromCache:false}}};
+  return{
+    where:(fl,op,v)=>sbQuery(t,[...f,[fl,op,v]],ord,lim),
+    orderBy:(fl,d)=>sbQuery(t,f,[fl,d||'asc'],lim),
+    limit:n=>sbQuery(t,f,ord,n),
+    get:async()=>toSnap(await run()),
+    onSnapshot(next,err){
+      const c=cacheable&&cacheGet(key);if(c)setTimeout(()=>next(toSnap(c)));
+      const s={run:async()=>{try{next(toSnap(await run()))}catch(e){if(e.code!=='unavailable')err?.(e)}}};
+      subs.add(s);s.run();return()=>subs.delete(s);
+    },
+    doc:id=>sbDoc(t,id||newId()),
+    add:async d=>{const r=sbDoc(t,newId());await r.set(d);return r}
+  };
+}
+function sbDoc(t,id){
+  const key=JSON.stringify([t,'doc',id]),cacheable=t==='config';
+  async function read(){const{data,error}=await sb.from(t).select('data').eq('id',id).maybeSingle();if(error)throw dbErr(error);const d=data?.data||null;if(cacheable)cacheSet(key,d);return d}
+  return{id,path:t+'/'+id,
+    get:async()=>snapDoc(id,await read()),
+    async set(d){
+      let r;
+      if(APPEND_ONLY.has(t)){r=await sb.from(t).insert({id,data:d});if(r.error?.code==='23505')r={error:null}}
+      else r=await sb.from(t).upsert({id,data:d,aggiornato:new Date().toISOString()});
+      if(r.error)throw dbErr(r.error);refreshSoon();
+    },
+    async update(p){const cur=await read();if(!cur)throw{code:'invalid_argument',message:'documento inesistente'};
+      const{error}=await sb.from(t).update({data:deepMerge(cur,p)}).eq('id',id);if(error)throw dbErr(error);refreshSoon()},
+    async delete(){const{error}=await sb.from(t).delete().eq('id',id);if(error)throw dbErr(error);refreshSoon()},
+    onSnapshot(next,err){
+      const c=cacheable?cacheGet(key):null;if(c)setTimeout(()=>next(snapDoc(id,c)));
+      const s={run:async()=>{try{next(snapDoc(id,await read()))}catch(e){if(e.code!=='unavailable')err?.(e)}}};
+      subs.add(s);s.run();return()=>subs.delete(s);
+    }
+  };
+}
+const sbDb={doc:p=>{const i=p.indexOf('/');return sbDoc(p.slice(0,i),p.slice(i+1))},collection:t=>sbQuery(t)};
+function sbUser(prof){
+  return{me:async()=>({id:prof.id,name:prof.nome}),id:async()=>prof.id,isOwner:async()=>prof.ruolo==='admin',canEdit:async()=>prof.ruolo==='admin',
+    can:async n=>n==='data.write'?prof.ruolo!=='lettore':null,
+    profiles:async ids=>{const o={};const{data}=await sb.from('profili').select('id,nome').in('id',ids);for(const r of data||[])o[r.id]={name:r.nome};return o}};
+}
+const sbAssets={async upload(blob){
+  const d=new Date(),path=`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${newId()}.jpg`;
+  const{error}=await sb.storage.from('foto').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:false});
+  if(error)throw dbErr(error);return{id:path};
+}};
+const sbDownloads={async save({filename,data}){
+  const b=data instanceof Blob?data:new Blob([data]),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);return{status:'saved'};
+}};
+/* link firmati alle foto (privati, validi 1 ora) */
+const fotoUrls=new Map(),fotoPend=new Set();let fotoT;
+setInterval(()=>fotoUrls.clear(),50*60e3);
+function fotoA(id){
+  if(!id)return'';const u=fotoUrls.get(id);
+  if(u)return`<a href="${esc(u)}" target="_blank" rel="noopener">Apri</a>`;
+  if(u==='')return'<span class="mute">n.d.</span>';
+  fotoPend.add(id);clearTimeout(fotoT);fotoT=setTimeout(loadFotoUrls,60);return'<span class="mute">…</span>';
+}
+async function loadFotoUrls(){
+  const ids=[...fotoPend].filter(i=>!fotoUrls.has(i));fotoPend.clear();if(!ids.length||!sb)return;
+  try{const{data,error}=await sb.storage.from('foto').createSignedUrls(ids,3600);if(error)throw error;
+    for(const i of ids)fotoUrls.set(i,'');for(const r of data||[])if(r.path&&r.signedUrl&&/^https:\/\//.test(r.signedUrl))fotoUrls.set(r.path,r.signedUrl);render()}catch(e){console.warn(e)}
+}
+/* utenti (pagina Dati, solo responsabile) */
+async function loadUtenti(){
+  try{const{data,error}=await sb.from('profili').select('id,nome,ruolo,attivo').order('nome');if(error)throw error;S.utenti=data}catch(e){S.utenti=S.utenti||[]}
+  render();
+}
+function vUtenti(){
+  const u=S.utenti;if(!u)return'<div class="card">Caricamento utenti…</div>';
+  return`<div class="card"><h2>Utenti</h2>
+   <p class="mute">Per aggiungere una persona: in Supabase apri <b>Authentication → Users → Add user → Create new user</b>, scrivi come email <b>nome@${esc(CFG.domain||'')}</b> e come password il suo <b>PIN</b> (almeno 6 cifre), spunta <b>Auto Confirm User</b>. Compare qui come Operatore.</p>
+   <div class="scroll"><table class="stack"><thead><tr><th>Nome utente</th><th>Ruolo</th><th>Attivo</th></tr></thead><tbody>
+   ${u.map(p=>`<tr><td><b>${esc(p.nome)}</b>${p.id===S.me.id?' <span class="mute">(tu)</span>':''}</td>
+     <td><select data-uruolo="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}" ${p.id===S.me.id?'disabled':''}>${[['operatore','Operatore'],['lettore','Lettura'],['admin','Responsabile']].map(([v,l])=>`<option value="${v}" ${p.ruolo===v?'selected':''}>${l}</option>`).join('')}</select></td>
+     <td><label class="check" style="margin:0"><input type="checkbox" data-uattivo="${esc(p.id)}" ${p.attivo?'checked':''} ${p.id===S.me.id?'disabled':''}> ${p.attivo?'Sì':'No'}</label></td></tr>`).join('')}
+   </tbody></table></div></div>`;
+}
+document.addEventListener('change',async e=>{const t=e.target;
+  if(t.dataset.uruolo||t.dataset.uattivo){const id=t.dataset.uruolo||t.dataset.uattivo,patch=t.dataset.uruolo?{ruolo:t.value}:{attivo:t.checked};
+    const{error}=await sb.from('profili').update(patch).eq('id',id);if(error)toast('Modifica non salvata.',true);else toast('Utente aggiornato.');loadUtenti()}
+});
+/* login */
+function showLogin(msg){
+  $('#nav').innerHTML='';$('#me').textContent='';$('#role').classList.add('hidden');$('#hdrBtns').classList.add('hidden');
+  $('#view').innerHTML=`<div class="card login fade"><h2>Accedi</h2>${msg?`<div class="msg err">${esc(msg)}</div>`:''}
+   <form id="loginF"><label for="lgU">Nome utente</label><input id="lgU" type="text" class="big" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+   <label for="lgP">PIN</label><input id="lgP" type="password" class="big" inputmode="numeric" autocomplete="current-password" required>
+   <button class="red" id="lgB" style="margin-top:18px;width:100%">Entra</button></form></div>`;
+}
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='loginF')return;e.preventDefault();
+  const u=$('#lgU').value.trim().toLowerCase().replace(/\s+/g,''),p=$('#lgP').value.trim();$('#lgB').disabled=true;
+  const{data,error}=await sb.auth.signInWithPassword({email:`${u}@${CFG.domain}`,password:p});
+  if(error)return showLogin(navigator.onLine?'Nome utente o PIN errati.':'Nessuna connessione: per il primo accesso serve la rete.');
+  startApp(data.user);
+});
+async function logout(){
+  if(S.outbox.length&&!await ask('Uscire?',`Ci sono ${S.outbox.length} salvataggi non ancora inviati: uscendo andranno persi.`))return;
+  await sb.auth.signOut();try{for(const k of Object.keys(localStorage))if(k.startsWith('pzc:'))localStorage.removeItem(k)}catch{}
+  location.reload();
+}
+async function cambiaPin(){
+  const i=$('#dlgI');i.type='password';i.inputMode='numeric';
+  const v=await ask('Cambia PIN','Scrivi il nuovo PIN (almeno 6 cifre).',true);i.type='text';i.inputMode='';
+  if(!v)return;if(!/^\d{6,}$/.test(v)){toast('Il PIN deve avere almeno 6 cifre.',true);return}
+  const{error}=await sb.auth.updateUser({password:v});toast(error?'PIN non cambiato: riprova.':'PIN cambiato.',!!error);
+}
+
+async function boot(){
+  if(!CFG.url||!CFG.key||!window.supabase){$('#view').innerHTML='<div class="card msg err">Configurazione mancante: compila il file config.js con indirizzo e chiave di Supabase.</div>';$('#me').textContent='';return}
+  sb=supabase.createClient(CFG.url,CFG.key,{auth:{persistSession:true,autoRefreshToken:true}});
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session)return showLogin();
+  startApp(session.user);
+}
+let started=false;
+async function startApp(user){
+  if(started)return;
+  let prof=null;
+  try{const{data,error}=await sb.from('profili').select('id,nome,ruolo,attivo').eq('id',user.id).maybeSingle();if(error)throw error;prof=data;if(prof)cacheSet('prof:'+user.id,prof)}
+  catch{prof=cacheGet('prof:'+user.id)}
+  $('#hdrBtns').classList.remove('hidden');
+  if(!prof||!prof.attivo){$('#me').textContent='';$('#view').innerHTML='<div class="card msg err">Il tuo utente non è attivo. Chiedi al responsabile.</div>';return}
+  started=true;
+  S.db=sbDb;S.user=sbUser(prof);S.assets=prof.ruolo==='lettore'?null:sbAssets;S.downloads=sbDownloads;S.sample=null;
+  S.me={id:prof.id,name:prof.nome};
+  S.role=prof.ruolo==='admin'?'admin':prof.ruolo==='lettore'?'lettore':'operatore';
+  if(S.role==='lettore')showDiag();
+  $('#me').textContent=S.me.name||'Utente';const rb=$('#role');rb.textContent={admin:'Responsabile',lettore:'Lettura',operatore:'Operatore'}[S.role];rb.classList.remove('hidden');
+  const tm=setTimeout(()=>{if(!S.ordLoaded)$('#view').innerHTML='<div class="card msg err">Il database non risponde. Controlla la connessione e riapri la pagina.</div>'},12000);
+  S.db.collection('ordini').onSnapshot(s=>{clearTimeout(tm);S.ordini=new Map(s.docs.map(d=>[d.id,d.data()]));S.ordLoaded=true;if(S.sel)S.sel=S.ordini.get(S.sel.odp)||S.sel;render()},()=>{clearTimeout(tm);S.ordLoaded=true;render()});
+  S.db.doc('config/impostazioni').onSnapshot(d=>{S.cfg={fotoObbligatoria:false,...(d.data()||{})};render()},()=>{});
+  S.db.doc('config/compat').onSnapshot(d=>{S.compat=d.data()?.coppie||[];render()},()=>{});
+  S.db.doc('config/import').onSnapshot(d=>{S.lastImp=d.data()||null;render()},()=>{});
+  obLoad();setTimeout(flush,1500);
+  subPunz();
+  subCtrl();
+  render();
+}
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+boot();
+}
+</script>
+</body>
+</html>
