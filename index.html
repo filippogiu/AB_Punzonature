@@ -209,12 +209,12 @@ function vPunzona(){
     ${S.lett&&S.lett.err?`<div class="msg err">${esc(S.lett.err)}</div>`:''}</div>`;
     return h;
   }
-  const conf=conflittoLega(o),prev=S.prev.filter(p=>!p.annullato);
+  const prev=S.prev.filter(p=>!p.annullato);
   h+=`<div class="grid fade"><div class="kv hl"><span>ODP</span><b>${esc(o.odp)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div>
    <div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pezzi</span><b>${esc(fmtN(o.pezzi))}</b></div>
    <div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
    ${o.nota?`<div class="msg info">${esc(o.nota)}</div>`:''}
-   ${conf.length?`<div class="msg err">Attenzione: la colata ${esc(o.colata)} risulta anche su altre leghe (${conf.map(esc).join(', ')}). Avvisa il responsabile prima di punzonare.</div>`:''}
+   <div class="msg info">Lega da punzonare: <b>${esc(o.lega)}</b>, esattamente come nell'ODP. Una lega compatibile non va bene.</div>
    ${prev.length?`<div class="msg warn">Questo ODP è già stato punzonato ${prev.length} ${prev.length>1?'volte':'volta'}, l'ultima il ${esc(fmtT(prev[0].tsMs))} da ${esc(chi(prev[0]))}.
      <label class="check"><input type="checkbox" id="chkAgain" ${S.chkAgain?'checked':''}> Confermo che serve una nuova punzonatura (es. barre aggiuntive)</label></div>`:''}
    <div class="row" style="margin-top:12px"><button class="ghost" id="chg">Cambia ordine</button></div></div>`;
@@ -229,7 +229,7 @@ function vPunzona(){
    ${S.leggendo?'<div class="msg info">Lettura etichetta in corso… (la prima volta può servire mezzo minuto)</div>':''}
    ${S.lett&&!S.lett.err?vLettura(o):S.lett?.err?`<div class="msg err">${esc(S.lett.err)}</div>`:''}
    ${!S.assets&&!S.demo?'<p class="mute">Il caricamento foto non è attivo per il tuo utente.</p>':''}</div>`;
-  const ready=colOk&&S.chkProf&&(!prev.length||S.chkAgain)&&!conf.length;
+  const ready=colOk&&S.chkProf&&(!prev.length||S.chkAgain);
   const fotoOk=!S.cfg.fotoObbligatoria||S.foto;
   h+=`<div class="card"><div class="step"><div class="num">3</div><h2>Barcode per la punzonatrice</h2></div>
    ${ready?`<p class="mute">Dati verificati. Premi Avanti per vedere solo i barcode a schermo intero.</p>
@@ -515,8 +515,7 @@ function vOrdini(){
     ${!im.nuovi&&!im.agg?`<div class="msg ok">✓ Tutti gli ordini di questo file sono già nel database e non sono cambiati: non c'è niente da caricare.</div>`:''}
     ${im.anom.length?`<details class="msg warn"><summary><b>${im.anom.length} anomalie da controllare</b> (non bloccano il caricamento)</summary><ul>${im.anom.slice(0,300).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:'<div class="msg ok">✓ Nessuna anomalia: ogni colata ha una sola lega.</div>'}
     ${im.note.length?`<details class="msg info"><summary>${im.note.length} note (ODP figli o billette riassegnate)</summary><ul>${im.note.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:''}
-    <label class="check"><input type="checkbox" id="prune" ${im.prune?'checked':''}> Rimuovi gli ${im.daRimuovere} ordini che non sono più nell'export (le punzonature già registrate restano nel registro)</label>
-    <div class="row"><button class="red" id="doImp" ${S.impBusy||(!im.nuovi&&!im.agg&&!(im.prune&&im.daRimuovere))?'disabled':''}>${S.impBusy?'Caricamento…':'Carica nel database'}</button></div>
+    <div class="row"><button class="red" id="doImp" ${S.impBusy||(!im.nuovi&&!im.agg)?'disabled':''}>${S.impBusy?'Caricamento…':'Carica nel database'}</button></div>
     ${S.impBusy?`<div class="bar"><i style="width:${S.impProg}%"></i></div>`:''}`}</div>`:''}</div>
   ${S.role!=='admin'?'':`<div class="card"><h2>Impostazioni</h2>
    <label class="check"><input type="checkbox" id="cfgFoto" ${S.cfg.fotoObbligatoria?'checked':''}> Foto dell'etichetta obbligatoria prima della punzonatura</label>
@@ -528,9 +527,7 @@ function vOrdini(){
    <p class="mute">Per ordini senza pressa riconosciuta si usa la tolleranza generica qui sotto (lasciala vuota per richiedere la misura esatta).</p>
    <div class="grid"><div><label for="tolMeno">Generica in meno (mm)</label><input id="tolMeno" type="text" inputmode="decimal" value="${esc(S.cfg.tolMeno??'')}" placeholder="es. 0"></div>
    <div><label for="tolPiu">Generica in più (mm)</label><input id="tolPiu" type="text" inputmode="decimal" value="${esc(S.cfg.tolPiu??'')}" placeholder="es. 10"></div></div>
-   <h3 style="margin-top:18px">Colate compatibili con altre leghe</h3><p class="mute">Per i casi rari in cui una colata è valida anche per una lega diversa.</p>
-   <div class="grid"><div><label for="cpC">Colata</label><input id="cpC" type="text" autocapitalize="characters"></div><div><label for="cpL">Lega ammessa</label><input id="cpL" type="text" autocapitalize="characters"></div><div style="align-self:end"><button id="cpAdd">Aggiungi</button></div></div>
-   ${S.compat.length?`<table style="margin-top:12px"><tbody>${S.compat.map((c,i)=>`<tr><td>${esc(c.colata)}</td><td>${esc(c.lega)}</td><td class="n"><button class="ghost" data-cpdel="${i}" style="min-height:36px;padding:4px 10px">Rimuovi</button></td></tr>`).join('')}</tbody></table>`:''}</div>
+</div>
 `}
   ${S.role==='admin'?vUtenti():''}
   <div class="card"><div class="row" style="justify-content:space-between"><h2>Ordini nel database</h2><span class="mute">${S.ordini.size} ordini · ${nCol} colate</span></div>
@@ -567,7 +564,7 @@ function parseExcel(buf){
   // colata → leghe, su database + file
   const merged=new Map([...S.ordini,...out]),m=new Map();
   for(const o of merged.values()){if(!m.has(o.colata))m.set(o.colata,new Set());m.get(o.colata).add(o.lega)}
-  for(const[c,s]of m)if(s.size>1){const l=[...s];if(!l.every(x=>l.every(y=>x===y||compatOk(c,x)||compatOk(c,y))))anom.push(`Colata ${c} associata a più leghe: ${l.join(', ')}`)}
+  // colate su più leghe: varianti compatibili, non è un'anomalia (la lega da punzonare resta quella dell'ODP)
   let nuovi=0,agg=0,uguali=0;const scrivi=[];
   for(const o of out.values()){const e=S.ordini.get(o.odp);
     if(!e){nuovi++;scrivi.push(o)}else if(JSON.stringify(e)!==JSON.stringify({...e,...o})){agg++;scrivi.push(o);if(e.colata!==o.colata)anom.push(`ODP ${o.odp}: colata cambiata da ${e.colata} a ${o.colata}`)}else uguali++}
@@ -576,8 +573,8 @@ function parseExcel(buf){
 }
 async function runImport(){
   const im=S.imp;if(!im||S.impBusy)return;S.impBusy=true;S.impProg=0;render();
-  const bulk=!!S.db.bulkSet,tot=im.scrivi.length+(im.prune?im.rimuovi.length:0);
-  const jobs=[...(bulk?[]:im.scrivi.map(o=>()=>S.db.doc('ordini/'+o.odp).set({...o,aggiornato:Date.now()}))),...(im.prune?im.rimuovi.map(k=>()=>S.db.doc('ordini/'+k).delete()):[])];
+  const bulk=!!S.db.bulkSet,tot=im.scrivi.length;
+  const jobs=[...(bulk?[]:im.scrivi.map(o=>()=>S.db.doc('ordini/'+o.odp).set({...o,aggiornato:Date.now()})))];
   let i=0,done=0,fail=0;
   const bar=()=>{S.impProg=Math.round(done/Math.max(1,tot)*100);const b=document.querySelector('.bar i');if(b)b.style.width=S.impProg+'%'};
   if(bulk&&im.scrivi.length){
@@ -691,7 +688,6 @@ document.addEventListener('change',async e=>{const t=e.target;
   if(t.id==='chkProf'){S.chkProf=t.checked;render()}
   else if(t.id==='chkAgain'){S.chkAgain=t.checked;render()}
   else if(t.id==='rFrom'||t.id==='rTo'||t.id==='rUser'){S[t.id]=t.value;render()}
-  else if(t.id==='prune'&&S.imp){S.imp.prune=t.checked;render()}
   else if(/^(foto|foto1|vfoto)$/.test(t.id)&&t.files[0]){const f=t.files[0];t.value='';fotoDa(t.id,f)}
   else if(t.dataset.tp){const n=parseLen(t.value);if(n==null||n<0){toast('Valore non valido.',true);return}
     const tp={...tolPresse()};tp[t.dataset.tp]={...(tp[t.dataset.tp]||{meno:0,piu:0}),[t.dataset.k]:n};

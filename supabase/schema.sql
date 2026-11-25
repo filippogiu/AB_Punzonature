@@ -111,7 +111,7 @@ alter table public.controlli   enable row level security;
 
 revoke all on public.profili, public.ordini, public.config, public.punzonature, public.controlli from anon;
 grant select, update on public.profili to authenticated;
-grant select, insert, update, delete on public.ordini, public.config to authenticated;
+grant select, insert, update on public.ordini, public.config to authenticated;  -- gli ordini non si cancellano dall'app
 grant select, insert, update on public.punzonature to authenticated;
 grant select, insert on public.controlli to authenticated;
 -- la funzione gestione-utenti usa il ruolo di servizio: nei progetti nuovi va autorizzato esplicitamente
