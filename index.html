@@ -567,14 +567,20 @@ function parseExcel(buf){
 }
 async function runImport(){
   const im=S.imp;if(!im||S.impBusy)return;S.impBusy=true;S.impProg=0;render();
-  const jobs=[...im.scrivi.map(o=>()=>S.db.doc('ordini/'+o.odp).set({...o,aggiornato:Date.now()})),...(im.prune?im.rimuovi.map(k=>()=>S.db.doc('ordini/'+k).delete()):[])];
+  const bulk=!!S.db.bulkSet,tot=im.scrivi.length+(im.prune?im.rimuovi.length:0);
+  const jobs=[...(bulk?[]:im.scrivi.map(o=>()=>S.db.doc('ordini/'+o.odp).set({...o,aggiornato:Date.now()}))),...(im.prune?im.rimuovi.map(k=>()=>S.db.doc('ordini/'+k).delete()):[])];
   let i=0,done=0,fail=0;
+  const bar=()=>{S.impProg=Math.round(done/Math.max(1,tot)*100);const b=document.querySelector('.bar i');if(b)b.style.width=S.impProg+'%'};
+  if(bulk&&im.scrivi.length){
+    try{await S.db.bulkSet('ordini',im.scrivi.map(o=>[o.odp,{...o,aggiornato:Date.now()}]),n=>{done=n;bar()})}
+    catch(e){fail+=im.scrivi.length-done;console.warn(e)}}
   const worker=async()=>{while(i<jobs.length){const j=jobs[i++];try{await j()}catch(e){if(e?.code==='unavailable'){await new Promise(r=>setTimeout(r,800));try{await j()}catch{fail++}}else fail++}
-    done++;S.impProg=Math.round(done/jobs.length*100);const b=document.querySelector('.bar i');if(b)b.style.width=S.impProg+'%'}};
+    done++;bar()}};
   await Promise.all([worker(),worker(),worker(),worker()]);
+  S.ordForce=true;
   if(done>fail)try{await S.db.doc('config/import').set({tsMs:Date.now(),uid:S.me.id,ordini:S.ordini.size})}catch(e){console.warn(e)}
-  S.impBusy=false;S.imp=fail?{err:`${fail} scritture non riuscite su ${jobs.length}. Riprova a caricare il file.`}:null;
-  toast(fail?'':`Caricati ${jobs.length} aggiornamenti.`);render();
+  S.impBusy=false;S.imp=fail?{err:`${fail} scritture non riuscite su ${tot}. Riprova a caricare il file.`}:null;
+  toast(fail?'':`Caricati ${tot} aggiornamenti.`);render();
 }
 
 /* ---------- salvataggio punzonatura ---------- */
@@ -745,14 +751,39 @@ function refreshSoon(){clearTimeout(refT);refT=setTimeout(()=>{for(const s of su
 setInterval(()=>{if(document.visibilityState==='visible')for(const s of subs)s.run()},20000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshSoon()});
 window.addEventListener('online',()=>refreshSoon());
+/* Supabase restituisce al massimo 1000 righe per richiesta: si legge a blocchi */
+async function leggiTutto(build,max){
+  const out=[];
+  for(let a=0;;a+=1000){const n=max?Math.min(1000,max-a):1000;if(n<=0)break;
+    const{data,error}=await build().range(a,a+n-1);if(error)throw dbErr(error);out.push(...data);if(data.length<n)break}
+  return out;
+}
+/* ordini: primo caricamento completo, poi solo i nuovi o modificati; ricarica completa ogni 15 minuti o dopo un nuovo export */
+const ORD_F=['odp','colata','lega','codLega','profilo','lunghezza','pezzi','cliente','pressa','lotto','nota','aggiornato'];
+const ORD={rows:null,max:'',full:0};
+function ordCacheLoad(){const c=cacheGet('ordini-v2');if(!c)return null;try{return{rows:new Map(c.r.map(a=>[a[0],Object.fromEntries(ORD_F.map((k,i)=>[k,a[i+1]]).filter(([,v])=>v!==null&&v!==''))])),max:c.m}}catch{return null}}
+function ordCacheSave(){cacheSet('ordini-v2',{m:ORD.max,r:[...ORD.rows].map(([id,d])=>[id,...ORD_F.map(k=>d[k]??null)])})}
+try{for(const k of Object.keys(localStorage))if(k.startsWith('pzc:["ordini"'))localStorage.removeItem(k)}catch{}
+async function leggiOrdini(){
+  if(!ORD.rows){const c=ordCacheLoad();if(c){ORD.rows=c.rows;ORD.max=c.max}}
+  const sel=()=>sb.from('ordini').select('id,data,aggiornato');
+  if(!ORD.rows||!ORD.full||S.ordForce||Date.now()-ORD.full>15*60e3){
+    S.ordForce=false;const d=await leggiTutto(()=>sel().order('id'));
+    ORD.rows=new Map(d.map(r=>[r.id,r.data]));ORD.max=d.reduce((m,r)=>r.aggiornato>m?r.aggiornato:m,'');ORD.full=Date.now();
+  }else{
+    const d=await leggiTutto(()=>sel().gt('aggiornato',ORD.max).order('id'));
+    for(const r of d){ORD.rows.set(r.id,r.data);if(r.aggiornato>ORD.max)ORD.max=r.aggiornato}
+  }
+  ordCacheSave();return[...ORD.rows];
+}
 function sbQuery(t,f=[],ord=null,lim=null){
-  const key=JSON.stringify([t,f,ord,lim]),cacheable=t==='ordini'||t==='config';
+  const key=JSON.stringify([t,f,ord,lim]),isOrd=t==='ordini'&&!f.length&&!ord&&!lim,cacheable=t==='config';
   async function run(){
-    let q=sb.from(t).select('id,data');
-    for(const[fl,,v]of f)q=q.eq('data->>'+fl,String(v));
-    if(ord)q=q.order('data->'+ord[0],{ascending:ord[1]!=='desc'});
-    q=lim?q.limit(lim):q.range(0,9999);
-    const{data,error}=await q;if(error)throw dbErr(error);
+    if(isOrd)return leggiOrdini();
+    const build=()=>{let q=sb.from(t).select('id,data');
+      for(const[fl,,v]of f)q=q.eq('data->>'+fl,String(v));
+      q=ord?q.order('data->'+ord[0],{ascending:ord[1]!=='desc'}).order('id'):q.order('id');return q};
+    const data=await leggiTutto(build,lim);
     const rows=data.map(r=>[r.id,r.data]);if(cacheable)cacheSet(key,rows);return rows;
   }
   const toSnap=rows=>{const docs=rows.map(([id,d])=>snapDoc(id,d));return{docs,size:docs.length,empty:!docs.length,metadata:{fromCache:false}}};
@@ -762,7 +793,7 @@ function sbQuery(t,f=[],ord=null,lim=null){
     limit:n=>sbQuery(t,f,ord,n),
     get:async()=>toSnap(await run()),
     onSnapshot(next,err){
-      const c=cacheable&&cacheGet(key);if(c)setTimeout(()=>next(toSnap(c)));
+      const c=isOrd?(()=>{const x=ordCacheLoad();return x&&[...x.rows]})():cacheable&&cacheGet(key);if(c)setTimeout(()=>next(toSnap(c)));
       const s={run:async()=>{try{next(toSnap(await run()))}catch(e){if(e.code!=='unavailable')err?.(e)}}};
       subs.add(s);s.run();return()=>subs.delete(s);
     },
@@ -778,7 +809,7 @@ function sbDoc(t,id){
     async set(d){
       let r;
       if(APPEND_ONLY.has(t)){r=await sb.from(t).insert({id,data:d});if(r.error?.code==='23505')r={error:null}}
-      else r=await sb.from(t).upsert({id,data:d,aggiornato:new Date().toISOString()});
+      else r=await sb.from(t).upsert({id,data:d});
       if(r.error)throw dbErr(r.error);refreshSoon();
     },
     async update(p){const cur=await read();if(!cur)throw{code:'invalid_argument',message:'documento inesistente'};
@@ -791,7 +822,12 @@ function sbDoc(t,id){
     }
   };
 }
-const sbDb={doc:p=>{const i=p.indexOf('/');return sbDoc(p.slice(0,i),p.slice(i+1))},collection:t=>sbQuery(t)};
+async function sbBulkSet(t,rows,onProg){
+  for(let a=0;a<rows.length;a+=500){const part=rows.slice(a,a+500);
+    const{error}=await sb.from(t).upsert(part.map(([id,data])=>({id,data})));if(error)throw dbErr(error);onProg?.(Math.min(a+500,rows.length))}
+  refreshSoon();
+}
+const sbDb={bulkSet:sbBulkSet,doc:p=>{const i=p.indexOf('/');return sbDoc(p.slice(0,i),p.slice(i+1))},collection:t=>sbQuery(t)};
 function sbUser(prof){
   return{me:async()=>({id:prof.id,name:prof.nome}),id:async()=>prof.id,isOwner:async()=>prof.ruolo==='admin',canEdit:async()=>prof.ruolo==='admin',
     can:async n=>n==='data.write'?prof.ruolo!=='lettore':null,
@@ -920,7 +956,7 @@ async function startApp(user){
   S.db.collection('ordini').onSnapshot(s=>{clearTimeout(tm);S.ordini=new Map(s.docs.map(d=>[d.id,d.data()]));S.ordLoaded=true;if(S.sel)S.sel=S.ordini.get(S.sel.odp)||S.sel;render()},()=>{clearTimeout(tm);S.ordLoaded=true;render()});
   S.db.doc('config/impostazioni').onSnapshot(d=>{S.cfg={fotoObbligatoria:false,...(d.data()||{})};render()},()=>{});
   S.db.doc('config/compat').onSnapshot(d=>{S.compat=d.data()?.coppie||[];render()},()=>{});
-  S.db.doc('config/import').onSnapshot(d=>{S.lastImp=d.data()||null;render()},()=>{});
+  S.db.doc('config/import').onSnapshot(d=>{const n=d.data()||null;if(S.lastImp&&n&&n.tsMs!==S.lastImp.tsMs){S.ordForce=true;refreshSoon()}S.lastImp=n;render()},()=>{});
   obLoad();setTimeout(flush,1500);
   subPunz();
   subCtrl();

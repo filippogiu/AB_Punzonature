@@ -67,6 +67,16 @@ create table if not exists public.controlli (
 );
 create index if not exists controlli_ts on public.controlli ((data->'tsMs'));
 
+-- data di modifica impostata dal server (l'app scarica solo gli ordini cambiati)
+create or replace function public.tocca_aggiornato() returns trigger
+language plpgsql set search_path = public as $$
+begin new.aggiornato := now(); return new; end $$;
+drop trigger if exists ordini_aggiornato on public.ordini;
+create trigger ordini_aggiornato before insert or update on public.ordini for each row execute function public.tocca_aggiornato();
+drop trigger if exists config_aggiornato on public.config;
+create trigger config_aggiornato before insert or update on public.config for each row execute function public.tocca_aggiornato();
+create index if not exists ordini_aggiornato_idx on public.ordini (aggiornato);
+
 -- ---------- Registro non modificabile ----------
 -- Di una punzonatura si possono cambiare solo "annullato" (una volta) e "verifica".
 create or replace function public.protezione_punzonature() returns trigger
@@ -109,6 +119,7 @@ grant usage on schema public to service_role;
 grant select, insert, update on public.profili to service_role;
 grant select on public.ordini, public.config, public.punzonature, public.controlli to service_role;
 revoke execute on function public.nuovo_utente() from public, anon, authenticated;
+revoke execute on function public.tocca_aggiornato() from public, anon, authenticated;
 revoke execute on function public.protezione_punzonature() from public, anon, authenticated;
 revoke execute on function public.mio_ruolo() from public, anon;
 grant execute on function public.mio_ruolo() to authenticated;
