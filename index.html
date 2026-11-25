@@ -512,7 +512,8 @@ function vOrdini(){
    <input type="file" id="xin" accept=".xlsx,.xls">
    ${im?`<div class="fade">${im.err?`<div class="msg err">${esc(im.err)}</div>`:`
     <div class="stats"><div><b>${im.nuovi}</b>nuovi</div><div><b>${im.agg}</b>aggiornati</div><div><b>${im.uguali}</b>invariati</div><div><b>${im.scartati}</b>scartati</div><div><b>${im.anom.length}</b>anomalie</div></div>
-    ${im.anom.length?`<div class="msg err"><b>Anomalie da controllare</b><ul>${im.anom.slice(0,30).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>`:'<div class="msg ok">✓ Nessuna anomalia: ogni colata ha una sola lega.</div>'}
+    ${!im.nuovi&&!im.agg?`<div class="msg ok">✓ Tutti gli ordini di questo file sono già nel database e non sono cambiati: non c'è niente da caricare.</div>`:''}
+    ${im.anom.length?`<details class="msg warn"><summary><b>${im.anom.length} anomalie da controllare</b> (non bloccano il caricamento)</summary><ul>${im.anom.slice(0,300).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:'<div class="msg ok">✓ Nessuna anomalia: ogni colata ha una sola lega.</div>'}
     ${im.note.length?`<details class="msg info"><summary>${im.note.length} note (ODP figli o billette riassegnate)</summary><ul>${im.note.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></details>`:''}
     <label class="check"><input type="checkbox" id="prune" ${im.prune?'checked':''}> Rimuovi gli ${im.daRimuovere} ordini che non sono più nell'export (le punzonature già registrate restano nel registro)</label>
     <div class="row"><button class="red" id="doImp" ${S.impBusy||(!im.nuovi&&!im.agg&&!(im.prune&&im.daRimuovere))?'disabled':''}>${S.impBusy?'Caricamento…':'Carica nel database'}</button></div>
