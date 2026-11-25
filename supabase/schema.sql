@@ -104,6 +104,9 @@ grant select, update on public.profili to authenticated;
 grant select, insert, update, delete on public.ordini, public.config to authenticated;
 grant select, insert, update on public.punzonature to authenticated;
 grant select, insert on public.controlli to authenticated;
+revoke execute on function public.nuovo_utente() from public, anon, authenticated;
+revoke execute on function public.protezione_punzonature() from public, anon, authenticated;
+revoke execute on function public.mio_ruolo() from public, anon;
 grant execute on function public.mio_ruolo() to authenticated;
 
 drop policy if exists profili_lettura on public.profili;
