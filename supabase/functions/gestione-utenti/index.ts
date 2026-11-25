@@ -10,15 +10,16 @@ const cors = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+function primaChiave(v: string): string {
+  const t = v.trim();
+  if (t.startsWith("{")) { const o = JSON.parse(t); return (o.default || Object.values(o)[0]) as string; }
+  if (t.startsWith("[")) { const a = JSON.parse(t); const x = a[0]; return typeof x === "string" ? x : (x?.api_key || x?.key || ""); }
+  return t;
+}
 function chiaveServizio(): string {
-  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (legacy) return legacy;
-  const nuove = Deno.env.get("SUPABASE_SECRET_KEYS") || "";
-  if (nuove.trim().startsWith("{")) {
-    const o = JSON.parse(nuove);
-    return o.default || Object.values(o)[0] as string;
-  }
-  return nuove;
+  const nuove = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (nuove) { try { const k = primaChiave(nuove); if (k) return k; } catch (_) { /* formato inatteso */ } }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 
 const RUOLI = ["operatore", "lettore", "admin"];
@@ -30,8 +31,10 @@ Deno.serve(async (req) => {
     const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     const { data: { user }, error: eu } = await admin.auth.getUser(token);
     if (eu || !user) return json({ error: "Accesso non valido: rientra nell'app." }, 401);
-    const { data: io } = await admin.from("profili").select("ruolo,attivo").eq("id", user.id).single();
-    if (!io || io.ruolo !== "admin" || !io.attivo) return json({ error: "Solo il responsabile può gestire gli utenti." }, 403);
+    const { data: io, error: ep0 } = await admin.from("profili").select("ruolo,attivo").eq("id", user.id).maybeSingle();
+    if (ep0) { console.error("lettura profilo", ep0.message); return json({ error: "Errore interno nel leggere il profilo: " + ep0.message }, 500); }
+    if (!io) { console.error("profilo non trovato per", user.id, "chiavi:", Object.keys(Deno.env.toObject()).filter(k => k.startsWith("SUPABASE_")).join(",")); return json({ error: "Profilo non trovato: la funzione non riesce a leggere gli utenti." }, 500); }
+    if (io.ruolo !== "admin" || !io.attivo) return json({ error: "Solo il responsabile può gestire gli utenti." }, 403);
 
     const b = await req.json();
     const pin = String(b.pin ?? "");
