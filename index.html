@@ -828,29 +828,58 @@ async function loadUtenti(){
 function vUtenti(){
   const u=S.utenti;if(!u)return'<div class="card">Caricamento utenti…</div>';
   return`<div class="card"><h2>Utenti</h2>
-   <p class="mute">Per aggiungere una persona: in Supabase apri <b>Authentication → Users → Add user → Create new user</b>, scrivi come email <b>nome@${esc(CFG.domain||'')}</b> e come password il suo <b>PIN</b> (almeno 6 cifre), spunta <b>Auto Confirm User</b>. Compare qui come Operatore.</p>
-   <div class="scroll"><table class="stack"><thead><tr><th>Nome utente</th><th>Ruolo</th><th>Attivo</th></tr></thead><tbody>
+   <form id="nuovoU" class="grid" style="margin:10px 0 18px;align-items:end">
+    <div><label for="nuN">Nome utente</label><input id="nuN" type="text" autocapitalize="none" spellcheck="false" placeholder="es. mario" required></div>
+    <div><label for="nuP">PIN (6+ cifre)</label><input id="nuP" type="password" inputmode="numeric" autocomplete="new-password" required></div>
+    <div><label for="nuR">Ruolo</label><select id="nuR"><option value="operatore">Operatore</option><option value="lettore">Lettura</option><option value="admin">Responsabile</option></select></div>
+    <div><button class="red" id="nuB" ${S.uBusy?'disabled':''}>${S.uBusy?'Creazione…':'Crea utente'}</button></div></form>
+   <div class="scroll"><table class="stack"><thead><tr><th>Nome utente</th><th>Ruolo</th><th>Attivo</th><th>PIN</th></tr></thead><tbody>
    ${u.map(p=>`<tr><td><b>${esc(p.nome)}</b>${p.id===S.me.id?' <span class="mute">(tu)</span>':''}</td>
      <td><select data-uruolo="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}" ${p.id===S.me.id?'disabled':''}>${[['operatore','Operatore'],['lettore','Lettura'],['admin','Responsabile']].map(([v,l])=>`<option value="${v}" ${p.ruolo===v?'selected':''}>${l}</option>`).join('')}</select></td>
-     <td><label class="check" style="margin:0"><input type="checkbox" data-uattivo="${esc(p.id)}" ${p.attivo?'checked':''} ${p.id===S.me.id?'disabled':''}> ${p.attivo?'Sì':'No'}</label></td></tr>`).join('')}
+     <td><label class="check" style="margin:0"><input type="checkbox" data-uattivo="${esc(p.id)}" ${p.attivo?'checked':''} ${p.id===S.me.id?'disabled':''}> ${p.attivo?'Sì':'No'}</label></td>
+     <td>${p.id===S.me.id?'<span class="mute">usa "Cambia PIN"</span>':`<button class="ghost" data-upin="${esc(p.id)}" data-unome="${esc(p.nome)}" style="min-height:36px;padding:4px 10px">Nuovo PIN</button>`}</td></tr>`).join('')}
    </tbody></table></div></div>`;
 }
 document.addEventListener('change',async e=>{const t=e.target;
   if(t.dataset.uruolo||t.dataset.uattivo){const id=t.dataset.uruolo||t.dataset.uattivo,patch=t.dataset.uruolo?{ruolo:t.value}:{attivo:t.checked};
     const{error}=await sb.from('profili').update(patch).eq('id',id);if(error)toast('Modifica non salvata.',true);else toast('Utente aggiornato.');loadUtenti()}
 });
+async function gestioneUtenti(body){
+  const{data,error}=await sb.functions.invoke('gestione-utenti',{body:{...body,domain:CFG.domain}});
+  if(!error)return data;
+  let msg='';try{msg=(await error.context.json()).error}catch{}
+  if(!msg)msg=/not found|404|Failed to send/i.test(String(error.message))?'La funzione "gestione-utenti" non è ancora installata su Supabase (vedi LEGGIMI.md).':'Operazione non riuscita: '+error.message;
+  throw new Error(msg);
+}
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='nuovoU')return;e.preventDefault();
+  const nome=$('#nuN').value.trim().toLowerCase(),pin=$('#nuP').value.trim(),ruolo=$('#nuR').value;
+  if(!/^[a-z0-9._-]{2,30}$/.test(nome)){toast('Nome utente: solo lettere minuscole, numeri, punto o trattino.',true);return}
+  if(!/^\d{6,12}$/.test(pin)){toast('Il PIN deve avere da 6 a 12 cifre.',true);return}
+  S.uBusy=true;render();
+  try{await gestioneUtenti({azione:'crea',nome,pin,ruolo});toast(`Utente ${nome} creato.`);$('#nuN').value='';$('#nuP').value='';loadUtenti()}
+  catch(err){toast(err.message,true)}
+  S.uBusy=false;render();
+});
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-upin]');if(!b)return;
+  const i=$('#dlgI');i.type='password';i.inputMode='numeric';
+  const v=await ask('Nuovo PIN per '+b.dataset.unome,'Scrivi il nuovo PIN (6-12 cifre) e comunicalo alla persona.',true);i.type='text';i.inputMode='';
+  if(!v)return;if(!/^\d{6,12}$/.test(v)){toast('Il PIN deve avere da 6 a 12 cifre.',true);return}
+  try{await gestioneUtenti({azione:'pin',id:b.dataset.upin,pin:v});toast('PIN aggiornato.')}catch(err){toast(err.message,true)}
+});
 /* login */
 function showLogin(msg){
   $('#nav').innerHTML='';$('#me').textContent='';$('#role').classList.add('hidden');$('#hdrBtns').classList.add('hidden');
   $('#view').innerHTML=`<div class="card login fade"><h2>Accedi</h2>${msg?`<div class="msg err">${esc(msg)}</div>`:''}
-   <form id="loginF"><label for="lgU">Nome utente</label><input id="lgU" type="text" class="big" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+   <form id="loginF"><label for="lgU">Nome utente (o email)</label><input id="lgU" type="text" class="big" autocomplete="username" autocapitalize="none" spellcheck="false" required>
    <label for="lgP">PIN</label><input id="lgP" type="password" class="big" inputmode="numeric" autocomplete="current-password" required>
    <button class="red" id="lgB" style="margin-top:18px;width:100%">Entra</button></form></div>`;
 }
 document.addEventListener('submit',async e=>{
   if(e.target.id!=='loginF')return;e.preventDefault();
   const u=$('#lgU').value.trim().toLowerCase().replace(/\s+/g,''),p=$('#lgP').value.trim();$('#lgB').disabled=true;
-  const{data,error}=await sb.auth.signInWithPassword({email:`${u}@${CFG.domain}`,password:p});
+  const{data,error}=await sb.auth.signInWithPassword({email:u.includes('@')?u:`${u}@${CFG.domain}`,password:p});
   if(error)return showLogin(navigator.onLine?'Nome utente o PIN errati.':'Nessuna connessione: per il primo accesso serve la rete.');
   startApp(data.user);
 });

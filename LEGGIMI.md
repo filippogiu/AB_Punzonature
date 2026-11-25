@@ -32,7 +32,7 @@ Tempo totale: circa un'ora, da fare dal computer.
    ```sql
    update public.profili set ruolo = 'admin' where nome = 'filippo';
    ```
-7. Crea allo stesso modo gli utenti dei colleghi (`mario@pz.example.com` + PIN). Entrano come **Operatore**; il ruolo si cambia poi dall'app (*Dati → Utenti*).
+7. Gli utenti dei colleghi si creano **dall'app**: *Dati → Utenti → Crea utente* (nome, PIN, ruolo). Da lì si reimposta anche il PIN di chi lo dimentica (*Nuovo PIN*). Serve la funzione `gestione-utenti`, già installata su Supabase (codice in `supabase/functions/gestione-utenti`).
 8. Prendi i due dati di collegamento: pulsante **Connect** in alto nella pagina del progetto, oppure:
    - **Project URL**: *Integrations → Data API* (es. `https://abcdefgh.supabase.co`; il codice è lo stesso che vedi nella barra degli indirizzi dopo `/project/`)
    - **chiave publishable** (`sb_publishable_…`): *Settings → API Keys*. È pubblica per natura: i dati sono protetti dal login e dalle regole del database. **Non usare mai la chiave secret.**
@@ -72,7 +72,8 @@ Da qui in poi ogni modifica salvata su GitHub viene pubblicata da sola.
 
 - **Se Supabase rifiuta l'email `@pz.example.com`**: usa un altro dominio (anche quello aziendale: nessuna email viene inviata) e scrivilo in `config.js` alla voce `domain`.
 
-- **Cambio PIN**: ognuno può cambiarlo dall'app (*Cambia PIN*). Se qualcuno lo dimentica: Supabase → *Authentication → Users* → utente → *Reset password* / imposta un nuovo PIN.
+- **Cambio PIN**: ognuno può cambiarlo dall'app (*Cambia PIN*). Se qualcuno lo dimentica: *Dati → Utenti → Nuovo PIN*.
+- **Accesso con email**: chi ha un utente con email vera (es. creato a mano in Supabase) entra scrivendo l'email intera al posto del nome utente.
 - **Disattivare un utente**: *Dati → Utenti* → togli la spunta "Attivo".
 - **Registro non modificabile**: le punzonature non si possono cancellare né modificare; si possono solo annullare con motivo (operatore entro 5 minuti, responsabile sempre). Lo impone il database, non solo l'app.
 - **Senza rete**: l'app si apre anche offline dopo il primo accesso; le punzonature restano sul telefono e partono quando torna la connessione.
