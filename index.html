@@ -130,7 +130,14 @@ const S={db:null,user:null,assets:null,downloads:null,demo:false,me:{id:'',name:
   outbox:[],lastImp:null,sample:null,lett:null,leggendo:false,sel:null,prev:[],colataLetta:'',chkProf:false,chkAgain:false,foto:null,fotoUrl:'',saving:false,done:null,q:'',
   V:{sel:null,prev:[],lett:null,lega:'',colata:'',lung:'',prof:'',q:'',leggendo:false,saving:false,saved:null},ctrl:[],ctrlLimit:300,rTab:'punz',imp:null,impBusy:false,impProg:0,rq:'',rFrom:'',rTo:'',rUser:'',oq:''};
 
-const routes=()=>S.role==='admin'?[['punzona','Punzona'],['verifica','Verifica'],['registro','Registro'],['ordini','Dati']]:S.role==='lettore'?[['registro','Registro'],['verifica','Verifica']]:[['punzona','Punzona'],['verifica','Verifica'],['mie','Le mie punzonature']];
+const RUOLI=[['operatore','Operatore'],['referente','Referente valle'],['assistente','Assistente'],['lettore','Lettura'],['admin','Responsabile']];
+const ruoloNome=r=>(RUOLI.find(x=>x[0]===r)||[,r])[1];
+const puoAggiornare=()=>['admin','assistente','referente'].includes(S.role);
+const vedeTutto=()=>['admin','assistente','lettore'].includes(S.role);
+const routes=()=>S.role==='admin'||S.role==='assistente'?[['punzona','Punzona'],['verifica','Verifica'],['registro','Registro'],['ordini','Dati']]
+  :S.role==='lettore'?[['registro','Registro'],['verifica','Verifica']]
+  :S.role==='referente'?[['punzona','Punzona'],['verifica','Verifica'],['mie','Le mie punzonature'],['ordini','Dati']]
+  :[['punzona','Punzona'],['verifica','Verifica'],['mie','Le mie punzonature']];
 const cur=()=>{const h=location.hash.slice(1);const r=routes().map(x=>x[0]);return r.includes(h)?h:r[0]};
 
 /* ---------- regole di verifica ---------- */
@@ -188,7 +195,7 @@ function vPunzona(){
     <div class="row" style="margin-top:18px"><button id="again">Nuovo ordine</button>${!S.done.queued&&canAnn(S.done)?`<button class="ghost" data-ann="${esc(S.done.id)}">Annulla (errore)</button>`:''}</div>
     ${!S.done.queued&&canAnn(S.done)&&S.role!=='admin'?'<p class="mute">Puoi annullarla tu entro 5 minuti; dopo solo il responsabile.</p>':''}</div>`;
   if(!S.ordLoaded)return`<div class="card">Caricamento ordini…</div>`;
-  if(!S.ordini.size)return`<div class="card"><h2>Nessun ordine caricato</h2><p class="mute">${S.role==='admin'?'Vai su "Ordini e dati" e carica l\'export Excel del gestionale.':'Chiedi al responsabile di caricare l\'export del gestionale.'}</p></div>`;
+  if(!S.ordini.size)return`<div class="card"><h2>Nessun ordine caricato</h2><p class="mute">${puoAggiornare()?'Vai su "Dati" e carica l\'export Excel del gestionale.':'Chiedi al responsabile di caricare l\'export del gestionale.'}</p></div>`;
   const o=S.sel;
   let h=`<div class="card"><div class="step"><div class="num ${o?'done':''}">1</div><h2>Ordine di produzione</h2></div>`;
   if(!o){
@@ -380,7 +387,7 @@ function vVerifica(){
      ${avvL?'<div class="msg warn">La lunghezza è diversa da quella indicata per questa pressa. Solo un avviso: non rende il controllo non conforme.</div>':''}
      ${S.role!=='lettore'?`<div class="row" style="margin-top:14px"><button class="red" id="vsave" ${!filled||V.saving?'disabled':''}>${V.saving?'Salvataggio…':'Salva controllo'}</button><button class="ghost" id="vnew">Nuovo controllo</button></div>`:'<p class="mute">Con il tuo accesso in sola lettura il controllo si vede a schermo ma non viene salvato.</p><div class="row" style="margin-top:14px"><button class="ghost" id="vnew">Nuovo controllo</button></div>'}</div>`;
   }
-  if(S.ctrl.length)h+=`<div class="card scroll"><div class="row" style="justify-content:space-between"><h2>Ultimi controlli</h2>${S.role==='admin'||S.role==='lettore'?'<a href="#registro" data-gotoctrl="1">Tutte nel registro</a>':''}</div><table class="stack" style="margin-top:10px"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Esito</th><th>Differenze</th></tr></thead><tbody>
+  if(S.ctrl.length)h+=`<div class="card scroll"><div class="row" style="justify-content:space-between"><h2>Ultimi controlli</h2>${vedeTutto()?'<a href="#registro" data-gotoctrl="1">Tutte nel registro</a>':''}</div><table class="stack" style="margin-top:10px"><thead><tr><th>Data e ora</th><th>Controllato da</th><th>ODP</th><th>Esito</th><th>Differenze</th></tr></thead><tbody>
     ${S.ctrl.slice(0,10).map(c=>`<tr><td class="t">${esc(fmtT(c.tsMs))}</td><td>${esc(chi(c))}</td><td class="t"><b>${esc(c.odp)}</b></td><td>${c.esito==='conforme'?'Conforme':'<b style="color:var(--red)">Non conforme</b>'}</td><td>${esc(diffs(c))}</td></tr>`).join('')}</tbody></table></div>`;
   return h;
 }
@@ -444,7 +451,7 @@ function drawCodes(){
 }
 
 const ANN_MS=5*60e3;
-function canAnn(p){return!!p&&!p.annullato&&(S.role==='admin'||(S.role==='operatore'&&p.uid===S.me.id&&Date.now()-p.tsMs<ANN_MS))}
+function canAnn(p){return!!p&&!p.annullato&&(S.role==='admin'||(S.role!=='lettore'&&p.uid===S.me.id&&Date.now()-p.tsMs<ANN_MS))}
 function chi(r){return r?.operatoreOrig||nm(r?.uid)}
 function nm(id){return id===S.me.id&&S.me.name?S.me.name:(S.names[id]||'Utente')}
 
@@ -466,10 +473,10 @@ function vRegistro(mine){
    ${mine?'':`<div class="full"><label for="rUser">Operatore</label><select id="rUser"><option value="">Tutti</option>${users.map(u=>`<option value="${esc(u)}" ${u===S.rUser?'selected':''}>${esc(nm(u))}</option>`).join('')}</select></div>`}</div>
    <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} punzonature${S.punz.length>=S.punzLimit?` (ultime ${S.punzLimit})`:''}</span>
    <span class="row">${S.punz.length>=S.punzLimit?'<button class="ghost" id="more">Carica più vecchie</button>':''}${S.downloads&&!mine?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
-   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>ODP</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lungh.</th><th>Esito</th><th>Controllo</th><th>Foto</th>${S.role==='admin'||mine?'<th></th>':''}</tr></thead><tbody>
+   <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>ODP</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lungh.</th><th>Esito</th><th>Controllo</th><th>Foto</th>${S.role!=='lettore'||mine?'<th></th>':''}</tr></thead><tbody>
    ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}</td>
    <td class="keep">${p.annullato?`Annullata: ${esc(p.annullato.motivo)}`:(p.ripetuta?'OK (ripetuta)':'OK')+(p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?' · etichetta ✓':' · etichetta con differenze'):'')}</td><td class="keep">${p.verifica?(p.verifica.esito==='conforme'?'✓ verificata':'<b style="color:var(--red)">✗ non conforme</b>')+`<br><span class="mute">${esc(fmtT(p.verifica.tsMs))}</span>`:'—'}</td><td class="keep">${fotoA(p.fotoId)}</td>
-   ${S.role==='admin'||mine?`<td class="keep">${canAnn(p)?`<button class="ghost" data-ann="${esc(p.id)}" style="min-height:36px;padding:4px 10px">Annulla</button>`:''}</td>`:''}</tr>`).join('')}
+   ${S.role!=='lettore'||mine?`<td class="keep">${canAnn(p)?`<button class="ghost" data-ann="${esc(p.id)}" style="min-height:36px;padding:4px 10px">Annulla</button>`:''}</td>`:''}</tr>`).join('')}
    </tbody></table>${rows.length?'':'<p class="mute">Nessuna punzonatura.</p>'}</div>`;
 }
 
@@ -495,7 +502,7 @@ function vRegCtrl(){
 function vImp(full){
   if(!S.lastImp?.tsMs)return'';
   const old=Date.now()-S.lastImp.tsMs>2*864e5;
-  return old?`<div class="msg warn">Ordini aggiornati al ${esc(fmtT(S.lastImp.tsMs))}, più di 2 giorni fa. ${S.role==='admin'?'Ricarica l\'export dal gestionale.':'Se un ODP manca, avvisa il responsabile.'}</div>`
+  return old?`<div class="msg warn">Ordini aggiornati al ${esc(fmtT(S.lastImp.tsMs))}, più di 2 giorni fa. ${puoAggiornare()?'Ricarica l\'export dal gestionale.':'Se un ODP manca, avvisa il responsabile.'}</div>`
     :`<p class="mute" style="margin:${full?'0 0 10px':'10px 0 0'}">Ordini aggiornati al ${esc(fmtT(S.lastImp.tsMs))}.</p>`;
 }
 function vOrdini(){
@@ -510,7 +517,7 @@ function vOrdini(){
     <label class="check"><input type="checkbox" id="prune" ${im.prune?'checked':''}> Rimuovi gli ${im.daRimuovere} ordini che non sono più nell'export (le punzonature già registrate restano nel registro)</label>
     <div class="row"><button class="red" id="doImp" ${S.impBusy||(!im.nuovi&&!im.agg&&!(im.prune&&im.daRimuovere))?'disabled':''}>${S.impBusy?'Caricamento…':'Carica nel database'}</button></div>
     ${S.impBusy?`<div class="bar"><i style="width:${S.impProg}%"></i></div>`:''}`}</div>`:''}</div>
-  <div class="card"><h2>Impostazioni</h2>
+  ${S.role!=='admin'?'':`<div class="card"><h2>Impostazioni</h2>
    <label class="check"><input type="checkbox" id="cfgFoto" ${S.cfg.fotoObbligatoria?'checked':''}> Foto dell'etichetta obbligatoria prima della punzonatura</label>
    <h3 style="margin-top:18px">Tolleranza sulla lunghezza per pressa (per la verifica)</h3>
    <table style="margin-top:8px"><thead><tr><th>Pressa</th><th>In meno (mm)</th><th>In più (mm)</th></tr></thead><tbody>
@@ -523,7 +530,8 @@ function vOrdini(){
    <h3 style="margin-top:18px">Colate compatibili con altre leghe</h3><p class="mute">Per i casi rari in cui una colata è valida anche per una lega diversa.</p>
    <div class="grid"><div><label for="cpC">Colata</label><input id="cpC" type="text" autocapitalize="characters"></div><div><label for="cpL">Lega ammessa</label><input id="cpL" type="text" autocapitalize="characters"></div><div style="align-self:end"><button id="cpAdd">Aggiungi</button></div></div>
    ${S.compat.length?`<table style="margin-top:12px"><tbody>${S.compat.map((c,i)=>`<tr><td>${esc(c.colata)}</td><td>${esc(c.lega)}</td><td class="n"><button class="ghost" data-cpdel="${i}" style="min-height:36px;padding:4px 10px">Rimuovi</button></td></tr>`).join('')}</tbody></table>`:''}</div>
-  ${vUtenti()}
+`}
+  ${S.role==='admin'?vUtenti():''}
   <div class="card"><div class="row" style="justify-content:space-between"><h2>Ordini nel database</h2><span class="mute">${S.ordini.size} ordini · ${nCol} colate</span></div>
    <label for="oq">Cerca</label><input id="oq" type="search" value="${esc(S.oq)}">
    <div class="scroll" style="margin-top:12px"><table class="stack"><thead><tr><th>ODP</th><th>Colata</th><th>Lega</th><th>Profilo</th><th>Lungh.</th><th>Pezzi</th><th>Cliente</th></tr></thead><tbody>
@@ -867,11 +875,11 @@ function vUtenti(){
    <form id="nuovoU" class="grid" style="margin:10px 0 18px;align-items:end">
     <div><label for="nuN">Nome utente</label><input id="nuN" type="text" autocapitalize="none" spellcheck="false" placeholder="es. mario" required></div>
     <div><label for="nuP">PIN (6+ cifre)</label><input id="nuP" type="password" inputmode="numeric" autocomplete="new-password" required></div>
-    <div><label for="nuR">Ruolo</label><select id="nuR"><option value="operatore">Operatore</option><option value="lettore">Lettura</option><option value="admin">Responsabile</option></select></div>
+    <div><label for="nuR">Ruolo</label><select id="nuR">${RUOLI.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div>
     <div><button class="red" id="nuB" ${S.uBusy?'disabled':''}>${S.uBusy?'Creazione…':'Crea utente'}</button></div></form>
    <div class="scroll"><table class="stack"><thead><tr><th>Nome utente</th><th>Ruolo</th><th>Attivo</th><th>PIN</th></tr></thead><tbody>
    ${u.map(p=>`<tr><td><b>${esc(p.nome)}</b>${p.id===S.me.id?' <span class="mute">(tu)</span>':''}</td>
-     <td><select data-uruolo="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}" ${p.id===S.me.id?'disabled':''}>${[['operatore','Operatore'],['lettore','Lettura'],['admin','Responsabile']].map(([v,l])=>`<option value="${v}" ${p.ruolo===v?'selected':''}>${l}</option>`).join('')}</select></td>
+     <td><select data-uruolo="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}" ${p.id===S.me.id?'disabled':''}>${RUOLI.map(([v,l])=>`<option value="${v}" ${p.ruolo===v?'selected':''}>${l}</option>`).join('')}</select></td>
      <td><label class="check" style="margin:0"><input type="checkbox" data-uattivo="${esc(p.id)}" ${p.attivo?'checked':''} ${p.id===S.me.id?'disabled':''}> ${p.attivo?'Sì':'No'}</label></td>
      <td>${p.id===S.me.id?'<span class="mute">usa "Cambia PIN"</span>':`<button class="ghost" data-upin="${esc(p.id)}" data-unome="${esc(p.nome)}" style="min-height:36px;padding:4px 10px">Nuovo PIN</button>`}</td></tr>`).join('')}
    </tbody></table></div></div>`;
@@ -949,9 +957,9 @@ async function startApp(user){
   started=true;
   S.db=sbDb;S.user=sbUser(prof);S.assets=prof.ruolo==='lettore'?null:sbAssets;S.downloads=sbDownloads;S.sample=null;
   S.me={id:prof.id,name:prof.nome};
-  S.role=prof.ruolo==='admin'?'admin':prof.ruolo==='lettore'?'lettore':'operatore';
+  S.role=RUOLI.some(r=>r[0]===prof.ruolo)?prof.ruolo:'operatore';
   if(S.role==='lettore')showDiag();
-  $('#me').textContent=S.me.name||'Utente';const rb=$('#role');rb.textContent={admin:'Responsabile',lettore:'Lettura',operatore:'Operatore'}[S.role];rb.classList.remove('hidden');
+  $('#me').textContent=S.me.name||'Utente';const rb=$('#role');rb.textContent=ruoloNome(S.role);rb.classList.remove('hidden');
   const tm=setTimeout(()=>{if(!S.ordLoaded)$('#view').innerHTML='<div class="card msg err">Il database non risponde. Controlla la connessione e riapri la pagina.</div>'},12000);
   S.db.collection('ordini').onSnapshot(s=>{clearTimeout(tm);S.ordini=new Map(s.docs.map(d=>[d.id,d.data()]));S.ordLoaded=true;if(S.sel)S.sel=S.ordini.get(S.sel.odp)||S.sel;render()},()=>{clearTimeout(tm);S.ordLoaded=true;render()});
   S.db.doc('config/impostazioni').onSnapshot(d=>{S.cfg={fotoObbligatoria:false,...(d.data()||{})};render()},()=>{});

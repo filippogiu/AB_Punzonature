@@ -68,6 +68,18 @@ Da qui in poi ogni modifica salvata su GitHub viene pubblicata da sola.
 3. Controlla le **tolleranze per pressa** e le impostazioni.
 4. Sui telefoni dei colleghi: apri l'indirizzo in **Chrome** (Android) o **Safari** (iPhone), entra, poi menu → **Aggiungi a schermata Home**.
 
+## Ruoli
+
+| Ruolo | Punzona e verifica | Vede le punzonature | Carica l'export (Dati) | Impostazioni e utenti | Annulla punzonature |
+|---|---|---|---|---|---|
+| **Responsabile** | sì | di tutti | sì | sì | tutte, sempre |
+| **Assistente** | sì | di tutti | sì | no | le proprie, entro 5 minuti |
+| **Referente valle** | sì | solo le proprie | sì | no | le proprie, entro 5 minuti |
+| **Operatore** | sì | solo le proprie (nell'app) | no | no | le proprie, entro 5 minuti |
+| **Lettura** | solo consultazione | di tutti | no | no | no |
+
+Il ruolo si assegna in *Dati → Utenti*. Le regole sono applicate dal database, non solo dall'app.
+
 ## Note
 
 - **Se Supabase rifiuta l'email `@pz.example.com`**: usa un altro dominio (anche quello aziendale: nessuna email viene inviata) e scrivilo in `config.js` alla voce `domain`.

@@ -22,7 +22,7 @@ function chiaveServizio(): string {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 
-const RUOLI = ["operatore", "lettore", "admin"];
+const RUOLI = ["operatore", "referente", "assistente", "lettore", "admin"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
