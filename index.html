@@ -127,7 +127,7 @@ const fmtN=v=>v===''||v==null?'':Number(v).toLocaleString('it-IT');
 /* ---------- stato ---------- */
 const S={db:null,user:null,assets:null,downloads:null,demo:false,me:{id:'',name:''},role:'operatore',
   ordini:new Map(),ordLoaded:false,punz:[],punzLimit:300,cfg:{fotoObbligatoria:false},compat:[],names:{},
-  outbox:[],lastImp:null,sample:null,lett:null,leggendo:false,sel:null,prev:[],colataLetta:'',chkProf:false,chkAgain:false,foto:null,fotoUrl:'',saving:false,done:null,q:'',
+  outbox:[],lastImp:null,sample:null,lett:null,leggendo:false,sel:null,prev:[],colataLetta:'',chkProf:false,chkLung:false,chkAgain:false,foto:null,fotoUrl:'',saving:false,done:null,q:'',
   V:{sel:null,prev:[],lett:null,lega:'',colata:'',lung:'',prof:'',q:'',leggendo:false,saving:false,saved:null},ctrl:[],ctrlLimit:300,rTab:'punz',imp:null,impBusy:false,impProg:0,rq:'',rFrom:'',rTo:'',rUser:'',oq:''};
 
 const RUOLI=[['operatore','Operatore'],['referente','Referente valle'],['assistente','Assistente'],['lettore','Lettura'],['admin','Responsabile']];
@@ -222,7 +222,9 @@ function vPunzona(){
   h+=`<div class="card"><div class="step"><div class="num ${colOk&&S.chkProf?'done':''}">2</div><h2>Verifica materiale</h2></div>
    <label for="col">Colata letta sull'etichetta del materiale</label><input id="col" type="text" class="big" autocomplete="off" autocapitalize="characters" value="${esc(S.colataLetta)}" placeholder="es. 526027A3">
    ${colOk?'<div class="msg ok">✓ La colata corrisponde all\'ordine.</div>':colKo?`<div class="msg err">La colata non corrisponde all'ordine. Non punzonare e verifica con il responsabile.</div>`:''}
-   <label class="check"><input type="checkbox" id="chkProf" ${S.chkProf?'checked':''}> Profilo ${esc(o.profilo)} e lunghezza ${esc(fmtN(o.lunghezza))} mm corrispondono al materiale</label>
+   <label class="check"><input type="checkbox" id="chkProf" ${S.chkProf?'checked':''}> Il profilo ${esc(o.profilo)} corrisponde al materiale</label>
+   <label class="check"><input type="checkbox" id="chkLung" ${S.chkLung?'checked':''}> La lunghezza del materiale è <b>diversa</b> da ${esc(fmtN(o.lunghezza))} mm</label>
+   ${lungDiversa(o)?`<div class="msg warn">⚠ Lunghezza diversa da quella indicata (${esc(fmtN(o.lunghezza))} mm). Puoi punzonare lo stesso: l'avviso resta registrato.</div>`:''}
    <p class="lbl">Foto dell'etichetta ${S.cfg.fotoObbligatoria?'(obbligatoria)':'(facoltativa)'}</p>
    ${fotoBtns('foto')}
    ${S.fotoUrl?`<img class="thumb" src="${esc(S.fotoUrl)}" alt="Foto etichetta">`:''}
@@ -239,6 +241,7 @@ function vPunzona(){
   return h;
 }
 
+function lungDiversa(o){return S.chkLung||!!(S.lett&&!S.lett.err&&S.lett.lunghezza!=null&&S.lett.lunghezza!==''&&Number(S.lett.lunghezza)!==Number(o.lunghezza))}
 function confronto(o,l){
   const eq=(a,b)=>a==null||a===''?null:norm(a)===norm(b);
   return[['ODP',l.odp,o.odp,eq(l.odp,o.odp)],['Colata',l.colata,o.colata,eq(l.colata,o.colata)],['Lega',l.lega,o.lega,eq(l.lega,o.lega)],
@@ -426,6 +429,7 @@ function vFull(){
   const o=S.sel;
   return`<div class="fs"><div class="fsbar"><button class="ghost" id="indietro">← Indietro</button><span>ODP <b>${esc(o.odp)}</b></span></div>
    <div class="fscodes"><div class="fscode"><p>LEGA <b>${esc(o.lega)}</b></p><svg id="bcL"></svg></div><div class="fscode"><p>COLATA <b>${esc(o.colata)}</b></p><svg id="bcC"></svg></div></div>
+   ${lungDiversa(o)?`<div class="msg warn" style="margin:8px 0">⚠ Lunghezza diversa da ${esc(fmtN(o.lunghezza))} mm (solo avviso)</div>`:''}
    <button class="red fsdone" id="save" ${S.saving?'disabled':''}>${S.saving?'Salvataggio…':'✓ Punzonatura eseguita'}</button></div>`;
 }
 let wakeLock=null;
@@ -474,7 +478,7 @@ function vRegistro(mine){
    <div class="row" style="margin-top:14px;justify-content:space-between"><span class="mute">${rows.length} punzonature${S.punz.length>=S.punzLimit?` (ultime ${S.punzLimit})`:''}</span>
    <span class="row">${S.punz.length>=S.punzLimit?'<button class="ghost" id="more">Carica più vecchie</button>':''}${S.downloads&&!mine?'<button id="xls">Esporta Excel</button>':''}</span></div></div>
    <div class="card scroll"><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>ODP</th><th>Lega</th><th>Colata</th><th>Profilo</th><th>Lungh.</th><th>Esito</th><th>Controllo</th><th>Foto</th>${S.role!=='lettore'||mine?'<th></th>':''}</tr></thead><tbody>
-   ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}</td>
+   ${rows.map(p=>`<tr class="${p.annullato?'ann':''}"><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td class="t"><b>${esc(p.odp)}</b></td><td>${esc(p.lega)}</td><td>${esc(p.colata)}</td><td>${esc(p.profilo)}</td><td class="n">${esc(fmtN(p.lunghezza))}${p.lunghezzaDiversa?' <b style="color:#c79a00" title="Lunghezza diversa da quella indicata">⚠</b>':''}</td>
    <td class="keep">${p.annullato?`Annullata: ${esc(p.annullato.motivo)}`:(p.ripetuta?'OK (ripetuta)':'OK')+(p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?' · etichetta ✓':' · etichetta con differenze'):'')}</td><td class="keep">${p.verifica?(p.verifica.esito==='conforme'?'✓ verificata':'<b style="color:var(--red)">✗ non conforme</b>')+`<br><span class="mute">${esc(fmtT(p.verifica.tsMs))}</span>`:'—'}</td><td class="keep">${fotoA(p.fotoId)}</td>
    ${S.role!=='lettore'||mine?`<td class="keep">${canAnn(p)?`<button class="ghost" data-ann="${esc(p.id)}" style="min-height:36px;padding:4px 10px">Annulla</button>`:''}</td>`:''}</tr>`).join('')}
    </tbody></table>${rows.length?'':'<p class="mute">Nessuna punzonatura.</p>'}</div>`;
@@ -632,14 +636,14 @@ async function save(){
   try{
     const fotoId='';
     const now=Date.now(),rec={tsMs:now,ts:new Date(now).toISOString(),uid:S.me.id,odp:o.odp,lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza,
-      cliente:o.cliente,colataLetta:norm(S.colataLetta),verificaProfilo:true,ripetuta:S.prev.some(p=>!p.annullato),fotoId,esito:'punzonato e verificato',letturaEtichetta:S.lett&&!S.lett.err?{...S.lett,esiti:Object.fromEntries(confronto(o,S.lett).map(x=>[x[0],x[3]]))}:null};
+      cliente:o.cliente,colataLetta:norm(S.colataLetta),verificaProfilo:true,lunghezzaDiversa:lungDiversa(o),ripetuta:S.prev.some(p=>!p.annullato),fotoId,esito:'punzonato e verificato',letturaEtichetta:S.lett&&!S.lett.err?{...S.lett,esiti:Object.fromEntries(confronto(o,S.lett).map(x=>[x[0],x[3]]))}:null};
     const it={kind:'punz',id:newId(),rec,blob:S.foto&&S.assets?S.foto:null};
     const r=await salva(it);
     S.done={...rec,id:it.id,queued:r==='queued'};exitFull();resetSel();
   }catch(e){saveErr(e,'Punzonatura non salvata')}
   S.saving=false;render();
 }
-function resetSel(keepFoto){S.sel=null;S.prev=[];S.colataLetta='';S.chkProf=false;S.chkAgain=false;S.q='';
+function resetSel(keepFoto){S.sel=null;S.prev=[];S.colataLetta='';S.chkProf=false;S.chkLung=false;S.chkAgain=false;S.q='';
   if(keepFoto){if(S.lett?.err)S.lett=null;return}S.lett=null;S.ocrText='';S.foto=null;if(S.fotoUrl)URL.revokeObjectURL(S.fotoUrl);S.fotoUrl=''}
 async function pick(odp){
   const o=S.ordini.get(odp);if(!o)return;const keepL=S.lett;resetSel(!S.sel);if(keepL&&!keepL.err)S.lett=keepL;S.sel=o;
@@ -664,7 +668,7 @@ async function loadNames(ids){
   try{const ps=await S.user.profiles(need);for(const i of need)S.names[i]=ps?.[i]?.name||'Utente'}catch{}
 }
 async function exportXls(){
-  const rows=filtered(false).map(p=>({'Data e ora':fmtT(p.tsMs),Operatore:chi(p),ODP:p.odp,Lega:p.lega,Colata:p.colata,'Colata letta':p.colataLetta,Profilo:p.profilo,Lunghezza:p.lunghezza,Cliente:p.cliente,
+  const rows=filtered(false).map(p=>({'Data e ora':fmtT(p.tsMs),Operatore:chi(p),ODP:p.odp,Lega:p.lega,Colata:p.colata,'Colata letta':p.colataLetta,Profilo:p.profilo,Lunghezza:p.lunghezza,'Lunghezza diversa':p.lunghezzaDiversa?'Sì (avviso)':'',Cliente:p.cliente,
     Esito:p.annullato?'Annullata: '+p.annullato.motivo:p.esito,Ripetuta:p.ripetuta?'Sì':'No',Controllo:p.verifica?(p.verifica.esito==='conforme'?'Verificata':'Non conforme')+' il '+fmtT(p.verifica.tsMs):'','Etichetta letta':p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'Tutto corrisponde':'Differenze: '+Object.entries(p.letturaEtichetta.esiti||{}).filter(x=>x[1]===false).map(x=>x[0]).join(', ')):'',Foto:p.fotoId?'Sì':'No'}));
   const cr=filteredCtrl().map(c=>({'Data e ora':fmtT(c.tsMs),'Controllato da':chi(c),ODP:c.odp,Pressa:c.pressa||'',
     'Lega rilevata':c.rilevato?.lega,'Lega attesa':c.atteso?.lega,'Colata rilevata':c.rilevato?.colata,'Colata attesa':c.atteso?.colata,
@@ -686,6 +690,7 @@ document.addEventListener('input',e=>{const t=e.target;
 });
 document.addEventListener('change',async e=>{const t=e.target;
   if(t.id==='chkProf'){S.chkProf=t.checked;render()}
+  else if(t.id==='chkLung'){S.chkLung=t.checked;render()}
   else if(t.id==='chkAgain'){S.chkAgain=t.checked;render()}
   else if(t.id==='rFrom'||t.id==='rTo'||t.id==='rUser'){S[t.id]=t.value;render()}
   else if(/^(foto|foto1|vfoto)$/.test(t.id)&&t.files[0]){const f=t.files[0];t.value='';fotoDa(t.id,f)}
