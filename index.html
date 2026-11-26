@@ -476,7 +476,6 @@ function vFull(){
 let wakeLock=null;
 async function enterFull(){
   S.full=true;document.body.classList.add('full');render();window.scrollTo(0,0);
-  try{await document.documentElement.requestFullscreen?.()}catch{}
   try{wakeLock=await navigator.wakeLock?.request('screen')}catch{}
 }
 function exitFull(){
