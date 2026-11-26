@@ -272,22 +272,36 @@ Usa null per un campo che non riesci a leggere con certezza. Non indovinare.`;
 const nz=v=>String(v??'').toUpperCase().replace(/[^0-9A-Z]/g,'');
 let ocrW=null,ocrLoading=null;
 function loadScript(src){return new Promise((ok,ko)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=ko;document.head.append(e)})}
+/* I file del lettore (circa 11 MB) restano sul telefono dopo il primo uso */
+const OCR_CACHE='ocr-tess-5.1.1';
+async function ocrBlob(path,type){
+  const url=new URL(path,location.href).href;let res=null;
+  try{const c=await caches.open(OCR_CACHE);res=await c.match(url);if(!res){const n=await fetch(url);if(!n.ok)throw new Error('http '+n.status);await c.put(url,n.clone());res=n}}
+  catch(e){if(!res)res=await fetch(url)}
+  return new Blob([await res.arrayBuffer()],{type});
+}
+const SIMD=(()=>{try{return WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]))}catch{return false}})();
 async function ocrWorker(){
   if(ocrW)return ocrW;if(ocrLoading)return ocrLoading;
   ocrLoading=(async()=>{
     if(!window.Tesseract)await loadScript('ocr/tesseract.min.js');
+    const coreName=SIMD?'tesseract-core-simd-lstm.wasm.js':'tesseract-core-lstm.wasm.js';
+    const [wk,core,lang]=await Promise.all([ocrBlob('ocr/worker.min.js','text/javascript'),ocrBlob('ocr/core/'+coreName,'text/javascript'),ocrBlob('ocr/lang/eng-traineddata-gz.b64.txt','text/plain')]);
+    const b64=(await lang.text()).trim(),bin=atob(b64),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const U={wk:URL.createObjectURL(wk),core:URL.createObjectURL(core),lang:URL.createObjectURL(new Blob([arr]))};
     const base=new URL('ocr/',location.href).href;
-    const boot=`const LANG=${JSON.stringify(base+'lang/eng-traineddata-gz.b64.txt')};const of=self.fetch.bind(self);
-self.fetch=async(u,o)=>{if(String(u).includes('eng.traineddata')){const t=await(await of(LANG)).text(),b=atob(t.trim()),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Response(a)}return of(u,o)};
-importScripts(${JSON.stringify(base+'worker.min.js')});`;
+    const boot=`const U=${JSON.stringify(U)},CORE=${JSON.stringify(coreName)};const of=self.fetch.bind(self),oi=self.importScripts.bind(self);
+self.fetch=(u,o)=>String(u).includes('eng.traineddata')?of(U.lang):of(u,o);
+self.importScripts=(...a)=>oi(...a.map(x=>String(x).endsWith(CORE)?U.core:x));
+oi(U.wk);`;
     const opt={workerPath:URL.createObjectURL(new Blob([boot],{type:'text/javascript'})),corePath:base+'core/',langPath:base+'lang',workerBlobURL:false,cacheMethod:'none'};
     ocrW=await Tesseract.createWorker('eng',1,opt);
     return ocrW;
   })();
   try{return await ocrLoading}finally{ocrLoading=null}
 }
-async function prepCanvas(file,rot){
-  const img=await createImageBitmap(file),k=Math.min(2,3000/Math.max(img.width,img.height)),w=Math.round(img.width*k),h=Math.round(img.height*k);
+async function prepCanvas(file,rot,max=3000){
+  const img=await createImageBitmap(file),k=Math.min(2,max/Math.max(img.width,img.height)),w=Math.round(img.width*k),h=Math.round(img.height*k);
   const c=document.createElement('canvas'),sw=rot%180!==0;c.width=sw?h:w;c.height=sw?w:h;const x=c.getContext('2d',{willReadFrequently:true});
   x.translate(c.width/2,c.height/2);x.rotate(rot*Math.PI/180);x.drawImage(img,-w/2,-h/2,w,h);
   const d=x.getImageData(0,0,c.width,c.height),p=d.data,hist=new Uint32Array(256);
@@ -296,32 +310,59 @@ async function prepCanvas(file,rot){
   const sc=255/Math.max(1,hi-lo);for(let i=0;i<p.length;i+=4){const g=Math.max(0,Math.min(255,(p[i]-lo)*sc));p[i]=p[i+1]=p[i+2]=g}
   x.setTransform(1,0,0,1,0,0);x.putImageData(d,0,0);return c;
 }
-const ocrScore=t=>(/20\d\d[.,]\d[.,]\d{4}[.,]\d/.test(t)?2:0)+(/\d{6}[A-Z]\d/.test(t.toUpperCase())?2:0)+(/\bmm\b/i.test(t)?1:0)+(/bolzano|aluminium|colata|ordine|profilo|lega/i.test(t)?1:0);
+const ocrScore=t=>(odpDaTesto(t).length?2:0)+(colateDaTesto(t).length?2:0)+(/\bmm\b/i.test(t)?1:0)+(/bolzano|aluminium|colata|ordine|profilo|lega/i.test(t)?1:0);
 async function ocrEtichetta(file){
   const w=await ocrWorker();let best={score:-1,text:'',rot:0};
-  for(const rot of [90,270,0,180]){
+  let last=90;try{last=Number(localStorage.getItem('ocr_rot'))||0}catch{}
+  const rots=[...new Set([[0,90,180,270].includes(last)?last:90,90,270,0,180])];
+  for(const rot of rots){
     await w.setParameters({tessedit_pageseg_mode:'11'});
     const {data}=await w.recognize(await prepCanvas(file,rot)),sc=ocrScore(data.text);
     if(sc>best.score)best={score:sc,text:data.text,rot};
     if(sc>=3)break;
   }
-  if(best.score>0){await w.setParameters({tessedit_pageseg_mode:'12'});const {data}=await w.recognize(await prepCanvas(file,best.rot));best.text+='\n'+data.text}
+  if(best.score>=3)try{localStorage.setItem('ocr_rot',String(best.rot))}catch{}
+  const completo=()=>colateDaTesto(best.text).length&&odpDaTesto(best.text).length;
+  /* se manca ODP o colata, altri due tentativi solo sull'orientamento giusto */
+  for(const [psm,max] of [['12',3000],['11',2000]]){
+    if(best.score<=0||completo())break;
+    await w.setParameters({tessedit_pageseg_mode:psm});const {data}=await w.recognize(await prepCanvas(file,best.rot,max));best.text+='\n'+data.text;
+  }
   return best.text;
 }
 async function leggiFoto(file){
   if(S.sample){const l=await leggiSample(file);if(!l.err)return{lett:l}}
   try{return{text:await ocrEtichetta(file)}}catch(e){console.warn(e);return{err:'Lettura della foto non riuscita su questo dispositivo: inserisci i dati guardando la foto.'}}
 }
+/* Correzione degli errori tipici del lettore: dove ci va una cifra, O→0, I/L→1, S→5, B→8, Z→2, G→6 */
+const A2D={O:'0',Q:'0',D:'0',I:'1',L:'1','|':'1',J:'1',S:'5',B:'8',Z:'2',G:'6',T:'7'},D2A={'4':'A','8':'B','0':'O','5':'S','2':'Z','6':'G','1':'I'};
+const fixD=t=>[...t].map(c=>A2D[c]||c).join('');
+function colateDaTesto(text,strict){
+  const U=String(text||'').toUpperCase(),out=new Set(),re=/(?<![0-9A-Z])([0-9OQDILJ|SBZGT]{6})([A-Z0-9])([0-9OQDILJ|SBZGT])(?![0-9A-Z])/g;let m;
+  while(m=re.exec(U)){const l=/[A-Z]/.test(m[2])?m[2]:strict?null:D2A[m[2]];if(l)out.add(fixD(m[1])+l+fixD(m[3]))}
+  return[...out].filter(x=>/^\d{6}[A-Z]\d$/.test(x));
+}
+function odpDaTesto(text){
+  const U=String(text||'').toUpperCase(),out=new Set(),D='[0-9OQDILJ|SBZGT]',re=new RegExp(`(?<![0-9A-Z])(${D}{4})[.,](${D})[.,](${D}{4})[.,](${D})(?![0-9A-Z])`,'g');let m;
+  while(m=re.exec(U)){const v=[m[1],m[2],m[3],m[4]].map(fixD).join('.');if(/^20\d\d\.\d\.\d{4}\.\d$/.test(v))out.add(v)}
+  return[...out];
+}
 function ordineDaTesto(text){
   const T=nz(text),all=[...S.ordini.values()],h=all.filter(o=>T.includes(nz(o.odp)));
   if(h.length===1)return h[0];
-  const col=new Set(text.toUpperCase().match(/\d{6}[A-Z]\d/g)||[]),c=all.filter(o=>col.has(o.colata)&&T.includes(nz(o.profilo)));
-  return c.length===1?c[0]:null;
+  const od=odpDaTesto(text).map(x=>S.ordini.get(x)).filter(Boolean);if(od.length===1)return od[0];
+  /* ODP spezzato su due righe: si riconosce dalla colata, più profilo o parte finale dell'ODP */
+  const col=new Set(colateDaTesto(text)),c=all.filter(o=>col.has(o.colata));
+  if(c.length===1)return c[0];
+  const fine=o=>String(o.odp).split('.').slice(2).join('.'),c2=c.filter(o=>new RegExp('(^|[^0-9])'+fine(o).replace(/\./g,'[.,]')+'([^0-9]|$)').test(text));
+  if(c2.length===1)return c2[0];
+  const c3=c.filter(o=>T.includes(nz(o.profilo)));
+  return c3.length===1?c3[0]:null;
 }
 function lettFromOcr(text,o){
   const T=nz(text),U=text.toUpperCase(),has=v=>v!=null&&v!==''&&T.includes(nz(v)),tok=v=>new RegExp('(^|[^0-9])'+String(v).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^0-9]|$)').test(U);
-  const odpM=(text.match(/20\d\d[.,]\d[.,]\d{4}[.,]\d/g)||[]).map(x=>x.replace(/,/g,'.')),colM=U.match(/\d{6}[A-Z]\d/g)||[],lenM=text.match(/(\d{1,2}[.,]\d{3}|\d{3,5})\s*mm/i);
-  return{src:'ocr',odp:has(o.odp)?o.odp:(odpM.find(x=>x!==o.odp)||null),colata:has(o.colata)?o.colata:(colM.find(x=>x!==o.colata)||null),
+  const odpM=odpDaTesto(text),colM=colateDaTesto(text),colS=colateDaTesto(text,true),lenM=text.match(/(\d{1,2}[.,]\d{3}|\d{3,5})\s*mm/i);
+  return{src:'ocr',odp:has(o.odp)||odpM.includes(o.odp)?o.odp:(odpM.find(x=>x!==o.odp)||null),colata:has(o.colata)||colM.includes(o.colata)?o.colata:(colS.find(x=>x!==o.colata)||null),
     lega:o.lega&&tok(o.lega)?o.lega:null,profilo:has(o.profilo)?o.profilo:null,lunghezza:lenM?parseLen(lenM[1]):(o.lunghezza>=1000&&[String(o.lunghezza),Number(o.lunghezza).toLocaleString('it-IT'),Number(o.lunghezza).toLocaleString('en-US')].some(tok)?o.lunghezza:null)};
 }
 function risolvi(res,oKnown){
@@ -447,6 +488,7 @@ const inAppAndroid=/Android/.test(navigator.userAgent)&&/\bwv\b|; wv\)/.test(nav
 function fotoBtns(id){
   return`${inAppAndroid?'<div class="msg warn">Se la fotocamera non si apre, apri questa pagina con Chrome.</div>':''}<div class="fbtn"><input id="${id}" type="file" accept="image/*" capture="environment" aria-label="Scatta foto"></div>`;
 }
+document.addEventListener('pointerdown',e=>{if(e.target.closest?.('.fbtn'))ocrWorker().catch(()=>{})},true);
 function fotoDa(k,f){if(k==='foto')fotoScelta(f,false);else if(k==='foto1')fotoScelta(f,true);else if(k==='vfoto')vFoto(f)}
 function drawCodes(){
   const o=S.sel,l=$('#bcL'),c=$('#bcC');if(!o||!l||!c||!window.JsBarcode)return;
