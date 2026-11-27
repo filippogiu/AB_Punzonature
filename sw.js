@@ -1,5 +1,5 @@
 // Tiene in memoria i file dell'app, così si apre anche senza rete (i dati restano su Supabase)
-const CACHE = 'punzonatura-v2';
+const CACHE = 'punzonatura-v3';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(n => n.startsWith('punzonatura-') && n !== CACHE).map(n => caches.delete(n)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

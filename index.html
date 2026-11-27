@@ -121,6 +121,9 @@ pre,.scroll{overflow-x:auto}
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=v=>String(v??'').trim().toUpperCase();
+/* Lega da punzonare: alcune descrizioni del gestionale vanno accorciate sulla barra */
+const LEGA_PUNZ=[[/^6026\s*AB\s*L\.?\s*F\.?$/,'6026 AB']];
+const LP=v=>{const l=norm(v);for(const[re,to]of LEGA_PUNZ)if(re.test(l))return to;return l};
 const fmtT=ms=>ms?new Date(ms).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 const fmtN=v=>v===''||v==null?'':Number(v).toLocaleString('it-IT');
 
@@ -214,7 +217,7 @@ function vPunzona(){
    <div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pezzi</span><b>${esc(fmtN(o.pezzi))}</b></div>
    <div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
    ${o.nota?`<div class="msg info">${esc(o.nota)}</div>`:''}
-   <div class="msg info">Lega da punzonare: <b>${esc(o.lega)}</b>, esattamente come nell'ODP. Una lega compatibile non va bene.</div>
+   <div class="msg info">Lega da punzonare: <b>${esc(LP(o.lega))}</b>${LP(o.lega)!==norm(o.lega)?` (nell'ODP: ${esc(o.lega)})`:', esattamente come nell\'ODP'}. Una lega compatibile non va bene.</div>
    ${prev.length?`<div class="msg warn">Questo ODP è già stato punzonato ${prev.length} ${prev.length>1?'volte':'volta'}, l'ultima il ${esc(fmtT(prev[0].tsMs))} da ${esc(chi(prev[0]))}.
      <label class="check"><input type="checkbox" id="chkAgain" ${S.chkAgain?'checked':''}> Confermo che serve una nuova punzonatura (es. barre aggiuntive)</label></div>`:''}
    <div class="row" style="margin-top:12px"><button class="ghost" id="chg">Cambia ordine</button></div></div>`;
@@ -394,7 +397,7 @@ function tolDi(o){const t=o.pressa&&tolPresse()[o.pressa];if(t)return{...t,da:'p
   if(S.cfg.tolMeno!=null&&S.cfg.tolPiu!=null)return{meno:S.cfg.tolMeno,piu:S.cfg.tolPiu,da:'generica'};return null}
 function esitiVerifica(o){
   const V=S.V,eq=(a,b)=>norm(a)===norm(b),L=parseLen(V.lung),T=tolDi(o),tm=Number(T?.meno||0),tp=Number(T?.piu||0);
-  return[['Lega',V.lega,o.lega,V.lega?eq(V.lega,o.lega):null],['Colata',V.colata,o.colata,V.colata?eq(V.colata,o.colata):null],
+  return[['Lega',V.lega,LP(o.lega),V.lega?eq(V.lega,LP(o.lega)):null],['Colata',V.colata,o.colata,V.colata?eq(V.colata,o.colata):null],
     ['Lunghezza',L==null?'':L+' mm',`${fmtN(o.lunghezza)} mm (−${tm} / +${tp})`,L==null?null:(L>=Number(o.lunghezza)-tm&&L<=Number(o.lunghezza)+tp)?true:'avviso']];
 }
 function vVerifica(){
@@ -414,7 +417,7 @@ function vVerifica(){
   }else{
     const o=V.sel,prev=V.prev.filter(p=>!p.annullato),es=esitiVerifica(o),filled=es[0][3]!=null&&es[1][3]!=null,ok=filled&&es[0][3]===true&&es[1][3]===true,avvL=es[2][3]==='avviso';
     h+=`<div class="card"><div class="step"><div class="num done">1</div><h2>Ordine ${esc(o.odp)}</h2></div>
-     <div class="grid"><div class="kv"><span>Lega</span><b>${esc(o.lega)}</b></div><div class="kv"><span>Colata</span><b>${esc(o.colata)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div><div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pressa</span><b>${esc(o.pressa||'—')}</b></div><div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
+     <div class="grid"><div class="kv"><span>Lega</span><b>${esc(LP(o.lega))}</b></div><div class="kv"><span>Colata</span><b>${esc(o.colata)}</b></div><div class="kv"><span>Profilo</span><b>${esc(o.profilo)}</b></div><div class="kv"><span>Lunghezza</span><b>${esc(fmtN(o.lunghezza))} mm</b></div><div class="kv"><span>Pressa</span><b>${esc(o.pressa||'—')}</b></div><div class="kv full"><span>Cliente</span><b style="font-size:15px">${esc(o.cliente)}</b></div></div>
      ${prev.length?`<h3 style="margin-top:16px">Punzonature registrate</h3><table class="stack"><thead><tr><th>Data e ora</th><th>Operatore</th><th>Colata letta</th><th>Etichetta</th></tr></thead><tbody>${prev.map(p=>`<tr><td class="t">${esc(fmtT(p.tsMs))}</td><td>${esc(chi(p))}</td><td>${esc(p.colataLetta)}</td><td>${p.letturaEtichetta?(!Object.values(p.letturaEtichetta.esiti||{}).some(v=>v===false)?'✓ corrisponde':'con differenze'):'non letta'}</td></tr>`).join('')}</tbody></table>`
        :'<div class="msg warn">Nessuna punzonatura registrata per questo ODP.</div>'}
      <div class="row" style="margin-top:12px"><button class="ghost" id="vchg">Cambia ordine</button></div></div>
@@ -456,7 +459,7 @@ async function vSave(){
   try{
     const fotoId='',link=V.prev.find(p=>!p.annullato)?.id||null;
     const es=esitiVerifica(o),rec={tsMs:Date.now(),uid:S.me.id,odp:o.odp,rilevato:{lega:norm(V.lega),colata:norm(V.colata),profilo:norm(V.prof),lunghezza:parseLen(V.lung)},
-      atteso:{lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza},tolleranza:tolDi(o)||{meno:0,piu:0,da:'esatta'},pressa:o.pressa||'',
+      atteso:{lega:LP(o.lega),colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza},tolleranza:tolDi(o)||{meno:0,piu:0,da:'esatta'},pressa:o.pressa||'',
       esiti:Object.fromEntries(es.map(x=>[x[0],x[3]])),esito:es[0][3]===true&&es[1][3]===true?'conforme':'non conforme',avvisoLunghezza:es[2][3]==='avviso',fotoId,daFoto:!!(V.lett&&!V.lett.err)};
     rec.punzRef=link;
     const it={kind:'ctrl',id:newId(),rec,blob:V.file&&S.assets?V.file:null,link};
@@ -469,7 +472,7 @@ async function vSave(){
 function vFull(){
   const o=S.sel;
   return`<div class="fs"><div class="fsbar"><button class="ghost" id="indietro">← Indietro</button><span>ODP <b>${esc(o.odp)}</b></span></div>
-   <div class="fscodes"><div class="fscode"><p>LEGA <b>${esc(o.lega)}</b></p><svg id="bcL"></svg></div><div class="fscode"><p>COLATA <b>${esc(o.colata)}</b></p><svg id="bcC"></svg></div></div>
+   <div class="fscodes"><div class="fscode"><p>LEGA <b>${esc(LP(o.lega))}</b></p><svg id="bcL"></svg></div><div class="fscode"><p>COLATA <b>${esc(o.colata)}</b></p><svg id="bcC"></svg></div></div>
    ${lungDiversa(o)?`<div class="msg warn" style="margin:8px 0">⚠ Lunghezza diversa da ${esc(fmtN(o.lunghezza))} mm (solo avviso)</div>`:''}
    <button class="red fsdone" id="save" ${S.saving?'disabled':''}>${S.saving?'Salvataggio…':'✓ Punzonatura eseguita'}</button></div>`;
 }
@@ -492,7 +495,7 @@ function fotoDa(k,f){if(k==='foto')fotoScelta(f,false);else if(k==='foto1')fotoS
 function drawCodes(){
   const o=S.sel,l=$('#bcL'),c=$('#bcC');if(!o||!l||!c||!window.JsBarcode)return;
   const opt={format:'CODE128',width:3,height:120,margin:18,displayValue:false,background:'#ffffff',lineColor:'#000000'};
-  for(const[el,val]of[[l,o.lega],[c,o.colata]]){JsBarcode(el,val,opt);el.setAttribute('preserveAspectRatio','none');const w=el.getAttribute('width'),h=el.getAttribute('height');el.setAttribute('viewBox',`0 0 ${parseFloat(w)} ${parseFloat(h)}`);el.removeAttribute('width');el.removeAttribute('height')}
+  for(const[el,val]of[[l,LP(o.lega)],[c,o.colata]]){JsBarcode(el,val,opt);el.setAttribute('preserveAspectRatio','none');const w=el.getAttribute('width'),h=el.getAttribute('height');el.setAttribute('viewBox',`0 0 ${parseFloat(w)} ${parseFloat(h)}`);el.removeAttribute('width');el.removeAttribute('height')}
 }
 
 const ANN_MS=5*60e3;
@@ -676,7 +679,7 @@ async function save(){
   const o=S.sel;if(!o||S.saving)return;S.saving=true;render();
   try{
     const fotoId='';
-    const now=Date.now(),rec={tsMs:now,ts:new Date(now).toISOString(),uid:S.me.id,odp:o.odp,lega:o.lega,colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza,
+    const now=Date.now(),rec={tsMs:now,ts:new Date(now).toISOString(),uid:S.me.id,odp:o.odp,lega:LP(o.lega),colata:o.colata,profilo:o.profilo,lunghezza:o.lunghezza,
       cliente:o.cliente,colataLetta:norm(S.colataLetta),verificaProfilo:true,lunghezzaDiversa:lungDiversa(o),ripetuta:S.prev.some(p=>!p.annullato),fotoId,esito:'punzonato e verificato',letturaEtichetta:S.lett&&!S.lett.err?{...S.lett,esiti:Object.fromEntries(confronto(o,S.lett).map(x=>[x[0],x[3]]))}:null};
     const it={kind:'punz',id:newId(),rec,blob:S.foto&&S.assets?S.foto:null};
     const r=await salva(it);
